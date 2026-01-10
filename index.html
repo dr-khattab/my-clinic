@@ -1,0 +1,95 @@
+﻿<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nabed - نابض | بوابة الدخول</title>
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore-compat.js"></script>
+    
+    <style>
+        body, html { margin: 0; padding: 0; height: 100%; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow: hidden; }
+        #activation-screen {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%);
+            display: flex; justify-content: center; align-items: center; z-index: 10000;
+        }
+        .login-card {
+            background: white; padding: 40px; border-radius: 20px; box-shadow: 0 15px 35px rgba(0,0,0,0.3);
+            text-align: center; width: 90%; max-width: 400px;
+        }
+        h2 { color: #2c3e50; margin-bottom: 20px; }
+        input { width: 100%; padding: 15px; margin: 10px 0; border: 2px solid #eee; border-radius: 10px; box-sizing: border-box; font-size: 16px; text-align: center; }
+        button { width: 100%; padding: 15px; background: #3498db; color: white; border: none; border-radius: 10px; cursor: pointer; font-size: 18px; font-weight: bold; transition: 0.3s; }
+        button:hover { background: #2980b9; }
+        #error-msg { color: #e74c3c; margin-top: 15px; display: none; font-weight: bold; }
+        iframe { width: 100%; height: 100%; border: none; display: none; }
+    </style>
+</head>
+<body>
+
+<div id="activation-screen">
+    <div class="login-card">
+        <h2>تفعيل نظام العيادة</h2>
+        <p>أدخل كود التفعيل للبدء</p>
+        <input type="text" id="clinic-id-input" placeholder="Khattab-2024">
+        <button onclick="startApp()">دخول النظام</button>
+        <p id="error-msg">⚠️ الكود غير صحيح أو النسخة منتهية</p>
+    </div>
+</div>
+
+<iframe id="app-frame" src=""></iframe>
+
+<script>
+// إعدادات Firebase الخاصة بك
+const firebaseConfig = {
+    apiKey: "AIzaSyDkOlGVZRR-YJL5iYxTgoMgTq2eICKAFIs",
+    authDomain: "clinicsystem-84678.firebaseapp.com",
+    projectId: "clinicsystem-84678",
+    storageBucket: "clinicsystem-84678.firebasestorage.app",
+    messagingSenderId: "470631564686",
+    appId: "1:470631564686:web:8af6ef47f8cda48b60d0df"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+// تفعيل ميزة العمل بدون إنترنت
+db.enablePersistence().catch((err) => console.log("Persistence failed"));
+
+async function startApp() {
+    const clinicId = document.getElementById('clinic-id-input').value.trim();
+    const errorMsg = document.getElementById('error-msg');
+    
+    if(!clinicId) { alert("من فضلك أدخل الكود"); return; }
+
+    try {
+        const doc = await db.collection('clinics').doc(clinicId).get();
+        
+        if (doc.exists && doc.data().active === true) {
+            // حفظ الكود في ذاكرة المتصفح ليتعرف عليه السيستم بالداخل
+            localStorage.setItem('activeClinicId', clinicId);
+            
+            // إخفاء شاشة الدخول وإظهار السيستم
+            document.getElementById('activation-screen').style.display = 'none';
+            const iframe = document.getElementById('app-frame');
+            iframe.style.display = 'block';
+            
+            // فتح ملف السيستم (تأكد أن الاسم مطابق تماماً لملفك الأصلي)
+            iframe.src = "clinic system full edition .html";
+            
+            console.log("تم تسجيل الدخول بنجاح للعيادة: " + clinicId);
+        } else {
+            errorMsg.style.display = 'block';
+        }
+    } catch (e) {
+        console.error(e);
+        alert("حدث خطأ في الاتصال بالسيرفر. تأكد من الإنترنت.");
+    }
+}
+
+// الكود التالي للسماح لملف السيستم بالوصول لقاعدة البيانات من داخل الـ Iframe
+window.db = db;
+</script>
+</body>
+</html>
