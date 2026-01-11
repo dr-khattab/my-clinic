@@ -4586,20 +4586,45 @@ function syncFromCloud() {
     db.collection('Clinics').doc(activeID).onSnapshot((doc) => {
         if (doc.exists) {
             const data = doc.data();
-            // تحديث كل مصفوفات النظام
+            
+            // --- الحل الجذري: تفريغ المصفوفات الحالية قبل استقبال بيانات العيادة الجديدة ---
+            patients = [];
+            visits = [];
+            appointments = [];
+            inventory = [];
+            messages = [];
+            medications = [];
+            // --------------------------------------------------------------------------
+
+            // تحديث المصفوفات بالبيانات القادمة من السحاب فقط
             if(data.patients) patients = data.patients;
-            if(data.settings) clinicSettings = data.settings;
+            if(data.clinicSettings) clinicSettings = data.clinicSettings; // تحديث الإعدادات (الاسم والباسورد)
             if(data.inventory) inventory = data.inventory;
             if(data.appointments) appointments = data.appointments;
             if(data.visits) visits = data.visits;
             if(data.messages) messages = data.messages;
+            if(data.medications) medications = data.medications;
             
-            // تحديث الواجهة
+            // تحديث الواجهة فوراً
             renderPatientsList();
             loadAppointments();
+            updateStats(); // لتحديث التقارير
+            if(typeof renderMedicationsList === 'function') renderMedicationsList();
             if(typeof loadMessages === 'function') loadMessages();
             
-            console.log("تم جلب كافة البيانات وتحديث السيستم");
+            // تحديث اسم العيادة في الأعلى ليطابق الـ ID الجديد
+            const clinicNameDisplay = document.getElementById('dashboardClinicName');
+            if(clinicNameDisplay) {
+                clinicNameDisplay.innerText = "عيادة: " + activeID;
+            }
+
+            console.log("تمت إعادة تحميل بيانات العيادة بنجاح: " + activeID);
+        } else {
+            // إذا كانت العيادة جديدة تماماً ولا توجد بيانات في السحاب
+            patients = []; visits = []; appointments = []; messages = [];
+            renderPatientsList();
+            loadAppointments();
+            console.log("عيادة جديدة، تم تصفير الواجهة");
         }
     });
 }
