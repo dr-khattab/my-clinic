@@ -4021,34 +4021,34 @@ pendingList.appendChild(item);
 // --- 1. إصلاح الحجوزات والمريض الجديد مع المزامنة السحابية ---
 
 function addAppointmentToConfirmed(){
-    let patient=null;
-    const patientName=document.getElementById('appointmentPatientName').value.trim();
-    const fileNumber=document.getElementById('appointmentFileNumberSearch').value.trim();
-    const phoneNumber=document.getElementById('appointmentPhoneSearch').value.trim();
+    let patient = null;
+    const patientName = document.getElementById('appointmentPatientName').value.trim();
+    const fileNumberSearch = document.getElementById('appointmentFileNumberSearch').value.trim();
+    const phoneNumberSearch = document.getElementById('appointmentPhoneSearch').value.trim();
     
+    // البحث عن المريض بالاسم أو الرقم أو الملف
     if(patientName){
-        patient=patients.find(p=>p.fullName===patientName);
-    }else if(fileNumber){
-        patient=patients.find(p=>p.fileNumber===fileNumber);
-    }else if(phoneNumber){
-        patient=patients.find(p=>p.phone===phoneNumber);
+        patient = patients.find(p => p.fullName === patientName);
+    } else if(fileNumberSearch){
+        patient = patients.find(p => p.fileNumber === fileNumberSearch);
+    } else if(phoneNumberSearch){
+        patient = patients.find(p => p.phone === phoneNumberSearch);
     }
     
-    // في حال كان المريض جديداً
-    if(!patient&&patientName){
-        patient={
-            id:Date.now(),
-            fullName:patientName,
-            ageYears:document.getElementById('appointmentAgeYears').value,
-            ageMonths:document.getElementById('appointmentAgeMonths').value,
-            weight:document.getElementById('appointmentWeight').value,
-            phone:document.getElementById('appointmentPhone').value,
-            chronicHistory:'',
-            fileNumber:document.getElementById('appointmentFileNumber').value||'P-'+(patients.length+1001),
-            createdAt:new Date().toISOString() // تم التعديل لصيغة عالمية للمزامنة
+    // إذا كان المريض جديداً (غير موجود في السجلات)
+    if(!patient && patientName){
+        patient = {
+            id: Date.now(),
+            fullName: patientName,
+            ageYears: document.getElementById('appointmentAgeYears').value,
+            ageMonths: document.getElementById('appointmentAgeMonths').value,
+            weight: document.getElementById('appointmentWeight').value,
+            phone: phoneNumberSearch, // استخدام المتغير الصحيح
+            chronicHistory: '',
+            fileNumber: fileNumberSearch || 'P-' + (patients.length + 1001), // استخدام المتغير الصحيح
+            createdAt: new Date().toISOString()
         };
         patients.push(patient);
-        // تم حذف renderPatientsList من هنا لأن saveData ستقوم بالتحديث الشامل
     }
     
     if(!patient){
@@ -4056,25 +4056,24 @@ function addAppointmentToConfirmed(){
         return;
     }
     
-    const appointment={
-        id:Date.now() + Math.random(),
-        patientId:patient.id,
-        patientName:patient.fullName,
-        date:document.getElementById('appointmentDate').value,
-        type:document.getElementById('appointmentType').value,
-        status:'مؤكد',
-        ageYears:patient.ageYears,
-        ageMonths:patient.ageMonths,
-        weight:patient.weight,
-        phone:patient.phone,
-        fileNumber:patient.fileNumber
+    const appointment = {
+        id: Date.now() + Math.random(),
+        patientId: patient.id,
+        patientName: patient.fullName,
+        date: document.getElementById('appointmentDate').value,
+        type: document.getElementById('appointmentType').value,
+        status: 'مؤكد',
+        ageYears: patient.ageYears,
+        ageMonths: patient.ageMonths,
+        weight: patient.weight,
+        phone: patient.phone,
+        fileNumber: patient.fileNumber
     };
     
     appointments.push(appointment);
     
-    // حفظ ومزامنة فورية لكل البيانات (المرضى والمواعيد) في مجلد العيادة
+    // تنفيذ الحفظ والتحديث وإغلاق النافذة
     saveData(); 
-    
     loadAppointments();
     closeModal('addAppointmentModal');
     alert('تم إضافة الحجز بنجاح ومزامنته سحابياً!');
@@ -4737,5 +4736,37 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }, true); // استخدام true لضمان التنفيذ قبل أي كود آخر
     }
-});</script></body>
+});// دالة تحديث تنبيه الرسائل (النقطة الحمراء)
+function updateMessageBadge() {
+    const chatIcon = document.querySelector('.comm-icon');
+    if (!chatIcon) return;
+
+    let badge = document.querySelector('.chat-badge');
+    if (!badge) {
+        badge = document.createElement('span');
+        badge.className = 'chat-badge';
+        badge.style = "position:absolute; top:-5px; right:-5px; background:red; color:white; border-radius:50%; width:18px; height:18px; font-size:11px; display:flex; align-items:center; justify-content:center; border:2px solid white; z-index:1001;";
+        chatIcon.appendChild(badge);
+    }
+
+    const chatModal = document.getElementById('commModal');
+    const isChatOpen = chatModal && chatModal.style.display === 'flex';
+
+    if (typeof messages !== 'undefined' && messages.length > 0) {
+        // حساب الرسائل غير المقروءة الواردة من الطرف الآخر
+        const unreadCount = messages.filter(m => m.sender !== currentUserType && !m.seen).length;
+        
+        if (unreadCount > 0 && !isChatOpen) {
+            badge.style.display = 'flex';
+            badge.textContent = unreadCount;
+        } else {
+            badge.style.display = 'none';
+        }
+    } else {
+        badge.style.display = 'none';
+    }
+}
+
+// تأكد من استدعاء هذه الدالة دورياً مع المزامنة
+setInterval(updateMessageBadge, 3000);</script></body>
 </html>
