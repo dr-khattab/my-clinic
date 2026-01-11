@@ -4021,96 +4021,54 @@ pendingList.appendChild(item);
 // --- 1. إصلاح الحجوزات والمريض الجديد مع المزامنة السحابية ---
 
 function addAppointmentToConfirmed() {
+    console.log("تم الضغط على زر الحجز الفعلي"); // للتأكد في المتصفح أن الدالة تعمل
     try {
-        // 1. تعريف المتغيرات وتجهيزها
-        let patient = null;
-        
-        // جلب القيم من خانات البحث (Search Fields)
-        const searchName = document.getElementById('appointmentPatientName').value.trim();
-        const searchFile = document.getElementById('appointmentFileNumberSearch').value.trim();
-        const searchPhone = document.getElementById('appointmentPhoneSearch').value.trim();
-        
-        // جلب القيم من خانات الإدخال الجديد (New Entry Fields)
-        // هذا هو الجزء الذي كان يسبب المشكلة (تمت إضافته الآن)
-        const newPhone = document.getElementById('appointmentPhone').value.trim();
-        const newFile = document.getElementById('appointmentFileNumber').value.trim();
-        const newWeight = document.getElementById('appointmentWeight').value.trim();
-        const newAgeY = document.getElementById('appointmentAgeYears').value.trim();
-        const newAgeM = document.getElementById('appointmentAgeMonths').value.trim();
+        const patientName = document.getElementById('appointmentPatientName').value.trim();
+        const phoneInput = document.getElementById('appointmentPhone').value.trim() || document.getElementById('appointmentPhoneSearch').value.trim();
+        const fileInput = document.getElementById('appointmentFileNumber').value.trim() || document.getElementById('appointmentFileNumberSearch').value.trim();
 
-        // 2. محاولة العثور على المريض الموجود مسبقاً
-        if (searchName) {
-            patient = patients.find(p => p.fullName === searchName);
-        } else if (searchFile) {
-            patient = patients.find(p => p.fileNumber === searchFile);
-        } else if (searchPhone) {
-            patient = patients.find(p => p.phone === searchPhone);
-        }
-
-        // 3. إذا لم نجد المريض، وكان الاسم موجوداً -> إنشاء مريض جديد
-        if (!patient && searchName) {
-            patient = {
-                id: Date.now(),
-                fullName: searchName,
-                // هنا التعديل الجوهري: نأخذ القيمة من الخانة الجديدة إذا كانت خانة البحث فارغة
-                phone: newPhone || searchPhone, 
-                fileNumber: newFile || searchFile || 'P-' + (patients.length + 1001),
-                ageYears: newAgeY,
-                ageMonths: newAgeM,
-                weight: newWeight,
-                chronicHistory: '',
-                createdAt: new Date().toISOString()
-            };
-            
-            // إضافة المريض لقائمة المرضى
-            patients.push(patient);
-        }
-
-        // التحقق النهائي
-        if (!patient) {
-            alert('الرجاء إدخال اسم المريض أولاً');
+        if (!patientName) {
+            alert("يرجى إدخال اسم المريض");
             return;
         }
 
-        // 4. إنشاء الحجز
+        let patient = patients.find(p => p.fullName === patientName);
+
+        if (!patient) {
+            patient = {
+                id: Date.now(),
+                fullName: patientName,
+                phone: phoneInput,
+                fileNumber: fileInput || 'P-' + (patients.length + 1001),
+                ageYears: document.getElementById('appointmentAgeYears').value,
+                ageMonths: document.getElementById('appointmentAgeMonths').value,
+                weight: document.getElementById('appointmentWeight').value,
+                createdAt: new Date().toISOString()
+            };
+            patients.push(patient);
+        }
+
         const appointment = {
             id: Date.now() + Math.random(),
             patientId: patient.id,
             patientName: patient.fullName,
-            date: document.getElementById('appointmentDate').value || new Date().toISOString().split('T')[0],
+            date: document.getElementById('appointmentDate').value,
             type: document.getElementById('appointmentType').value,
-            status: 'مؤكد', // الفرق الوحيد عن الحجز المحتمل
-            ageYears: patient.ageYears,
-            ageMonths: patient.ageMonths,
-            weight: patient.weight,
+            status: 'مؤكد',
             phone: patient.phone,
             fileNumber: patient.fileNumber
         };
 
-        // إضافة الحجز للقائمة
         appointments.push(appointment);
-
-        // 5. الحفظ والتحديث (الخطوات الحاسمة)
-        saveData(); // حفظ في الذاكرة
-        
-        // إفراغ الخانات لتجهيزها للمريض القادم
-        document.getElementById('appointmentPatientName').value = '';
-        document.getElementById('appointmentPhoneSearch').value = '';
-        document.getElementById('appointmentPhone').value = '';
-        
-        // تحديث الجدول وإغلاق النافذة
+        saveData();
         loadAppointments();
         closeModal('addAppointmentModal');
-        
-        // رسالة نجاح صغيرة
-        // alert('تمت الإضافة بنجاح'); // يمكنك تفعيلها إذا أردت التأكد
-
-    } catch (error) {
-        console.error(error);
-        alert('حدث خطأ أثناء الحفظ، يرجى التأكد من البيانات');
+        alert('تم الحجز بنجاح');
+    } catch (e) {
+        console.error(e);
+        alert("حدث خطأ، تأكد من ملء البيانات");
     }
-}
-function addAppointmentToPending(){
+}function addAppointmentToPending(){
     let patient=null;
     const patientName=document.getElementById('appointmentPatientName').value.trim();
     const fileNumber=document.getElementById('appointmentFileNumberSearch').value.trim();
@@ -4800,5 +4758,28 @@ function updateMessageBadge() {
 }
 
 // تأكد من استدعاء هذه الدالة دورياً مع المزامنة
-setInterval(updateMessageBadge, 3000);</script></body>
+setInterval(updateMessageBadge, 3000);</script><script>
+// كود الإصلاح القسري لزر الحجز الفعلي
+(function() {
+    const fixBookingButton = () => {
+        // البحث عن الزر من خلال النص الذي يحتويه
+        const buttons = document.querySelectorAll('button');
+        buttons.forEach(btn => {
+            if (btn.textContent.includes('الفعلية')) {
+                btn.type = 'button'; // منع تحديث الصفحة
+                btn.onclick = function(e) {
+                    e.preventDefault();
+                    if (typeof addAppointmentToConfirmed === 'function') {
+                        addAppointmentToConfirmed();
+                    }
+                };
+            }
+        });
+    };
+
+    // تشغيل الإصلاح عند فتح الصفحة وبعد ثانية للتأكيد
+    fixBookingButton();
+    setTimeout(fixBookingButton, 2000);
+})();
+</script></body>
 </html>
