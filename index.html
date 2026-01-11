@@ -4688,5 +4688,29 @@ window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
     console.log('النظام جاهز للتثبيت بنجاح');
 });
-</script></body>
+// كود تصحيح الدخول ومنع تداخل بيانات العيادات
+document.addEventListener('DOMContentLoaded', function() {
+    const loginBtn = document.getElementById('loginBtn');
+    if (loginBtn) {
+        loginBtn.addEventListener('click', function() {
+            // تصفير المصفوفات فوراً عند محاولة دخول جديدة
+            patients = []; 
+            visits = []; 
+            appointments = []; 
+            inventory = []; 
+            messages = []; 
+            medications = [];
+            
+            // جلب البيانات الجديدة
+            const idInput = document.getElementById('clinicIdInput').value.trim();
+            if (idInput) {
+                clinicID = idInput;
+                // تفعيل المزامنة للـ ID الجديد
+                setTimeout(() => {
+                    if (typeof syncFromCloud === 'function') syncFromCloud();
+                }, 500);
+            }
+        }, true); // استخدام true لضمان التنفيذ قبل أي كود آخر
+    }
+});</script></body>
 </html>
