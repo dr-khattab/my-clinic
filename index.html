@@ -1364,7 +1364,14 @@ const medicineTypeTranslations={
 function setupDoctorDashboard(){
 document.getElementById('loginPage').style.display='none';
 document.getElementById('dashboard').style.display='block';
+
+// تأمين كود العيادة وتفعيل المزامنة السحابية فوراً
+if(!clinicID) clinicID = localStorage.getItem('nabed_clinic_id');
 document.getElementById('currentUser').textContent=clinicSettings.doctorName;
+document.getElementById('dashboardClinicName').textContent = "عيادة: " + (clinicID || "نابض");
+
+if(typeof syncFromCloud === 'function') syncFromCloud();
+
 showAllSections();
 renderPatientsList();
 renderMedicationsList();
@@ -1384,8 +1391,14 @@ loadMessages();
 function setupSecretaryDashboard(){
 document.getElementById('loginPage').style.display='none';
 document.getElementById('dashboard').style.display='block';
+
+// تأمين كود العيادة وتفعيل المزامنة السحابية فوراً
+if(!clinicID) clinicID = localStorage.getItem('nabed_clinic_id');
 document.getElementById('currentUser').textContent='سكرتير العيادة';
-document.getElementById('dashboardClinicName').textContent=clinicSettings.clinicName+' - نظام السكرتير';
+document.getElementById('dashboardClinicName').textContent= (clinicID || clinicSettings.clinicName) +' - نظام السكرتير';
+
+if(typeof syncFromCloud === 'function') syncFromCloud();
+
 setupSecretarySections();
 const today=new Date().toISOString().split('T')[0];
 document.getElementById('appointmentDate').value=today;
@@ -1475,7 +1488,6 @@ additionalInstructions='';
 // --- محرك نابض النهائي (بدون تكرار) ---
 // ملاحظة: المتغيرات معرفة مرة واحدة فقط هنا
 // تأكد من عدم وجود let currentUserType = ... فوق هذا السطر أو تحته
-
 function selectUser(user) {
     selectedLoginUser = user;
     
