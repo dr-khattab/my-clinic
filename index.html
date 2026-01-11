@@ -4020,77 +4020,94 @@ pendingList.appendChild(item);
 
 // --- 1. إصلاح الحجوزات والمريض الجديد مع المزامنة السحابية ---
 
-function addAppointmentToConfirmed(){
+function addAppointmentToConfirmed() {
     try {
+        // 1. تعريف المتغيرات وتجهيزها
         let patient = null;
-        // جلب العناصر مع التأكد من وجودها (Safety Check)
-        const elName = document.getElementById('appointmentPatientName');
-        const elFile = document.getElementById('appointmentFileNumberSearch');
-        const elPhone = document.getElementById('appointmentPhoneSearch');
         
-        const patientName = elName ? elName.value.trim() : "";
-        const fileNumberSearch = elFile ? elFile.value.trim() : "";
-        const phoneNumberSearch = elPhone ? elPhone.value.trim() : "";
+        // جلب القيم من خانات البحث (Search Fields)
+        const searchName = document.getElementById('appointmentPatientName').value.trim();
+        const searchFile = document.getElementById('appointmentFileNumberSearch').value.trim();
+        const searchPhone = document.getElementById('appointmentPhoneSearch').value.trim();
         
-        // البحث عن المريض
-        if(patientName){
-            patient = patients.find(p => p.fullName === patientName);
-        } else if(fileNumberSearch){
-            patient = patients.find(p => p.fileNumber === fileNumberSearch);
-        } else if(phoneNumberSearch){
-            patient = patients.find(p => p.phone === phoneNumberSearch);
+        // جلب القيم من خانات الإدخال الجديد (New Entry Fields)
+        // هذا هو الجزء الذي كان يسبب المشكلة (تمت إضافته الآن)
+        const newPhone = document.getElementById('appointmentPhone').value.trim();
+        const newFile = document.getElementById('appointmentFileNumber').value.trim();
+        const newWeight = document.getElementById('appointmentWeight').value.trim();
+        const newAgeY = document.getElementById('appointmentAgeYears').value.trim();
+        const newAgeM = document.getElementById('appointmentAgeMonths').value.trim();
+
+        // 2. محاولة العثور على المريض الموجود مسبقاً
+        if (searchName) {
+            patient = patients.find(p => p.fullName === searchName);
+        } else if (searchFile) {
+            patient = patients.find(p => p.fileNumber === searchFile);
+        } else if (searchPhone) {
+            patient = patients.find(p => p.phone === searchPhone);
         }
-        
-        // إذا كان المريض جديداً
-        if(!patient && patientName){
+
+        // 3. إذا لم نجد المريض، وكان الاسم موجوداً -> إنشاء مريض جديد
+        if (!patient && searchName) {
             patient = {
                 id: Date.now(),
-                fullName: patientName,
-                ageYears: document.getElementById('appointmentAgeYears')?.value || "",
-                ageMonths: document.getElementById('appointmentAgeMonths')?.value || "",
-                weight: document.getElementById('appointmentWeight')?.value || "",
-                phone: phoneNumberSearch,
+                fullName: searchName,
+                // هنا التعديل الجوهري: نأخذ القيمة من الخانة الجديدة إذا كانت خانة البحث فارغة
+                phone: newPhone || searchPhone, 
+                fileNumber: newFile || searchFile || 'P-' + (patients.length + 1001),
+                ageYears: newAgeY,
+                ageMonths: newAgeM,
+                weight: newWeight,
                 chronicHistory: '',
-                fileNumber: fileNumberSearch || 'P-' + (patients.length + 1001),
                 createdAt: new Date().toISOString()
             };
+            
+            // إضافة المريض لقائمة المرضى
             patients.push(patient);
         }
-        
-        if(!patient){
-            alert('الرجاء إدخال اسم المريض على الأقل');
+
+        // التحقق النهائي
+        if (!patient) {
+            alert('الرجاء إدخال اسم المريض أولاً');
             return;
         }
-        
-        // إنشاء الحجز
+
+        // 4. إنشاء الحجز
         const appointment = {
             id: Date.now() + Math.random(),
             patientId: patient.id,
             patientName: patient.fullName,
-            date: document.getElementById('appointmentDate')?.value || new Date().toISOString().split('T')[0],
-            type: document.getElementById('appointmentType')?.value || "كشف",
-            status: 'مؤكد',
+            date: document.getElementById('appointmentDate').value || new Date().toISOString().split('T')[0],
+            type: document.getElementById('appointmentType').value,
+            status: 'مؤكد', // الفرق الوحيد عن الحجز المحتمل
             ageYears: patient.ageYears,
             ageMonths: patient.ageMonths,
             weight: patient.weight,
             phone: patient.phone,
             fileNumber: patient.fileNumber
         };
-        
+
+        // إضافة الحجز للقائمة
         appointments.push(appointment);
+
+        // 5. الحفظ والتحديث (الخطوات الحاسمة)
+        saveData(); // حفظ في الذاكرة
         
-        // الحفظ والتحديث (الخطوات التي كانت تتعطل)
-        saveData(); 
-        if(typeof loadAppointments === 'function') loadAppointments();
+        // إفراغ الخانات لتجهيزها للمريض القادم
+        document.getElementById('appointmentPatientName').value = '';
+        document.getElementById('appointmentPhoneSearch').value = '';
+        document.getElementById('appointmentPhone').value = '';
         
-        // إغلاق النافذة فوراً
+        // تحديث الجدول وإغلاق النافذة
+        loadAppointments();
         closeModal('addAppointmentModal');
         
-        alert('تم إضافة الحجز الفعلي بنجاح!');
-        
+        // رسالة نجاح صغيرة
+        // alert('تمت الإضافة بنجاح'); // يمكنك تفعيلها إذا أردت التأكد
+
     } catch (error) {
-        console.error("خطأ في إضافة الحجز:", error);
-        alert("حدث خطأ تقني، يرجى التأكد من ملء البيانات الأساسية");
+        console.error(error);
+        alert('حدث خطأ أثناء الحفظ، يرجى التأكد من البيانات');
     }
 }
 function addAppointmentToPending(){
