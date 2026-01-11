@@ -4034,7 +4034,6 @@ function addAppointmentToConfirmed(){
         patient=patients.find(p=>p.phone===phoneNumber);
     }
     
-    // في حال كان المريض جديداً
     if(!patient&&patientName){
         patient={
             id:Date.now(),
@@ -4045,10 +4044,10 @@ function addAppointmentToConfirmed(){
             phone:document.getElementById('appointmentPhone').value,
             chronicHistory:'',
             fileNumber:document.getElementById('appointmentFileNumber').value||'P-'+(patients.length+1001),
-            createdAt:new Date().toISOString() // تم التعديل لصيغة عالمية للمزامنة
+            createdAt:new Date().toISOString()
         };
         patients.push(patient);
-        // تم حذف renderPatientsList من هنا لأن saveData ستقوم بالتحديث الشامل
+        if(typeof renderPatientsList === 'function') renderPatientsList(); 
     }
     
     if(!patient){
@@ -4072,12 +4071,13 @@ function addAppointmentToConfirmed(){
     
     appointments.push(appointment);
     
-    // حفظ ومزامنة فورية لكل البيانات (المرضى والمواعيد) في مجلد العيادة
-    saveData(); 
+    // حفظ ومزامنة فورية وتحديث الواجهة
+    saveToStorage();  
+    loadAppointments(); 
     
-    loadAppointments();
     closeModal('addAppointmentModal');
-    alert('تم إضافة الحجز بنجاح ومزامنته سحابياً!');
+    alert('تم إضافة الحجز بنجاح ومزامنته!');
+}
 }
 function addAppointmentToPending(){
     let patient=null;
@@ -4317,11 +4317,10 @@ function loadMessages(){
         const msgDiv = document.createElement('div');
         msgDiv.className = `message ${isMyMsg ? 'sender' : 'receiver'}`;
         
-        // علامة الصح (صح واحد رمادي للإرسال، صحين زرق للقراءة)
         let statusHtml = '';
         if(isMyMsg) {
-            statusHtml = msg.seen ? 
-                '<span style="color:#3498db; margin-right:5px; font-weight:bold">✔✔</span>' : 
+            statusHtml = msg.seen ?  
+                '<span style="color:#3498db; margin-right:5px; font-weight:bold">✔✔</span>' :  
                 '<span style="color:gray; margin-right:5px">✔</span>';
         }
 
@@ -4334,7 +4333,28 @@ function loadMessages(){
         `;
         container.appendChild(msgDiv);
     });
+    
     container.scrollTop = container.scrollHeight;
+
+    // --- تحديث علامة التنبيه (Badge) ---
+    updateMessageBadge();
+}
+
+// دالة مساعدة للتحكم في ظهور النقطة الحمراء على أيقونة المحادثة
+function updateMessageBadge() {
+    const chatBadge = document.querySelector('.chat-badge');
+    if (chatBadge) {
+        // إذا كان هناك رسائل ولم تكن نافذة الشات مفتوحة، أظهر التنبيه
+        const chatWindow = document.getElementById('commWindow');
+        const isChatOpen = chatWindow && chatWindow.style.display === 'block';
+        
+        if (messages.length > 0 && !isChatOpen) {
+            chatBadge.style.display = 'block';
+            chatBadge.textContent = messages.length; 
+        } else {
+            chatBadge.style.display = 'none';
+        }
+    }
 }
 
 // 1. إرسال الرسالة مع تفعيل "لم تقرأ بعد"
