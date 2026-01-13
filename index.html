@@ -4591,73 +4591,46 @@ async function saveToStorage() {
     }
 }
 
-// --- 2. محرك الاستقبال الذكي ومعالجة التعارض (The Smart Sync Engine) ---
+// --- // --- 2. محرك الاستقبال الذكي والمستقر (Sync Engine v2) ---
 async function syncFromCloud() {
     const activeID = clinicID || localStorage.getItem('nabed_clinic_id');
     if (!activeID) return;
 
-    // أولاً: تحميل النسخة المحلية (IndexedDB) فوراً عند الفتح (للسرعة والأوفلاين)
+    // 1. تحميل فوري من المخزن المحلي (IndexedDB) للسرعة والأوفلاين
     if (typeof getFromPermanentStorage === 'function') {
         const localData = await getFromPermanentStorage('clinicData');
         if (localData) {
-            applyDataToSystem(localData, true); // true تعني بيانات محلية فقط
-            console.log("تم تحميل البيانات المحلية بنجاح");
+            // نطبق البيانات المحلية فوراً كنسخة مبدئية لتسريع الفتح
+            applyDataToSystem(localData); 
+            console.log("تم تحميل النسخة المحلية (أوفلاين)");
         }
     }
 
-    // ثانياً: الاتصال بالسحاب والدمج الذكي لمنع ضياع بيانات الأوفلاين
+    // 2. الاستماع للسحاب (مستقبل فقط): هذا الجزء يستقبل التعديلات ولا يعيد رفعها
+    // وبذلك نمنع الموبايل من مسح بيانات اللاب توب
     db.collection('Clinics').doc(activeID).onSnapshot(async (doc) => {
         if (doc.exists) {
             const cloudData = doc.data();
-            const localData = await getFromPermanentStorage('clinicData');
             
-            // استدعاء دالة الدمج لمقارنة المحلي بالسحابي
-            const mergedData = mergeClinicData(localData, cloudData);
-            
-            applyDataToSystem(mergedData, false);
-            console.log("تم الدمج والمزامنة مع السحاب بنجاح");
+            // تحديث النظام ببيانات السحاب (هي المرجع النهائي عند الاتصال)
+            applyDataToSystem(cloudData);
+            console.log("تم التحديث اللحظي من السحاب بنجاح");
 
-            // تحديث المخزن المحلي بالنسخة المدمجة الجديدة
+            // حفظ نسخة "كاش" في المخزن المحلي للطوارئ
             if (typeof saveToPermanentStorage === 'function') {
-                await saveToPermanentStorage('clinicData', mergedData);
+                await saveToPermanentStorage('clinicData', cloudData);
             }
         }
     }, (error) => {
-        console.warn("تعذر الاتصال بالسحاب، أنت تعمل حالياً على النسخة المحلية فقط");
+        console.warn("أنت تعمل حالياً في وضع الأوفلاين الكامل");
     });
 }
 
-// دالة الدمج الذكية: تقارن المصفوفات وتضيف العناصر الناقصة بناءً على الـ ID
-function mergeClinicData(local, cloud) {
-    if (!local) return cloud;
-    if (!cloud) return local;
-
-    const mergeList = (localList, cloudList) => {
-        const combined = [...cloudList];
-        localList.forEach(localItem => {
-            // البحث عن العنصر في السحاب، إذا لم يوجد (تمت إضافته أوفلاين) يتم دمجه
-            if (!combined.find(cloudItem => cloudItem.id === localItem.id)) {
-                combined.push(localItem);
-            }
-        });
-        return combined;
-    };
-
-    return {
-        ...cloud,
-        patients: mergeList(local.patients || [], cloud.patients || []),
-        visits: mergeList(local.visits || [], cloud.visits || []),
-        appointments: mergeList(local.appointments || [], cloud.appointments || []),
-        inventory: mergeList(local.inventory || [], cloud.inventory || []),
-        messages: mergeList(local.messages || [], cloud.messages || []),
-        medications: mergeList(local.medications || [], cloud.medications || []),
-        lastUpdate: new Date().toISOString()
-    };
-}
-
-// دالة تطبيق البيانات وتحديث الواجهة
-function applyDataToSystem(data, isLocalOnly) {
+// دالة تطبيق البيانات (تحديث الذاكرة والواجهة فقط - تم حذف الرفع التلقائي منها)
+function applyDataToSystem(data) {
     if (!data) return;
+
+    // تحديث المصفوفات العامة بالبيانات الواردة
     patients = data.patients || [];
     visits = data.visits || [];
     appointments = data.appointments || [];
@@ -4666,19 +4639,17 @@ function applyDataToSystem(data, isLocalOnly) {
     medications = data.medications || [];
     if(data.clinicSettings) clinicSettings = data.clinicSettings;
 
-    // تحديث كل أجزاء الواجهة البرمجية
+    // تحديث جميع أجزاء الواجهة فوراً
     renderPatientsList();
     loadAppointments();
     updateStats();
     if(typeof renderMedicationsList === 'function') renderMedicationsList();
     if(typeof loadMessages === 'function') loadMessages();
     
+    // تحديث اسم العيادة في الأعلى
     const clinicNameDisplay = document.getElementById('dashboardClinicName');
-    if(clinicNameDisplay) clinicNameDisplay.innerText = "عيادة: " + (clinicID || "جاري التحميل...");
-    
-    // إذا كان هناك إنترنت وتم الدمج، نرفع النسخة النهائية للسحاب ليراها باقي الأجهزة
-    if (!isLocalOnly && typeof saveToStorage === 'function') {
-        setTimeout(saveToStorage, 2000); 
+    if(clinicNameDisplay) {
+        clinicNameDisplay.innerText = "عيادة: " + (clinicID || "جاري التحميل...");
     }
 }
 
@@ -4687,8 +4658,9 @@ window.addEventListener('load', function() {
     syncFromCloud();
 });
 </script>
+
 <script>
-// كود تحريك أيقونة المحادثة
+// كود تحريك أيقونة المحادثة (حافظنا عليه كما هو ليعمل السحب)
 (function() {
     const dragItem = document.querySelector("#commIcon");
     if (!dragItem) return;
@@ -4724,7 +4696,8 @@ window.addEventListener('load', function() {
         }
     }
 })();
-</script><script>
+</script>
+<script>
 // ==========================================
 // محرك "نابض" للهوية والتخزين المستقبلي (IndexedDB)
 // ==========================================
