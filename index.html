@@ -4552,11 +4552,15 @@ function generateMonthlyReport(){
     document.getElementById('monthlyReportContent').innerHTML=content;
 }
 
-// --- المحرك الشامل المطور (Nabed Core - V2) ---
-// --- 1. محرك الحفظ والمزامنة المطور (يدعم IndexedDB + Firebase) ---
+// // --- المحرك الشامل المطور (Nabed Core - V3) ---
+
+// --- 1. محرك الحفظ والمزامنة المطور (يعتمد على سلطة التوقيت لمنع التعارض) ---
 async function saveToStorage() {
     try {
         const activeID = clinicID || localStorage.getItem('nabed_clinic_id');
+        
+        // تسجيل الطابع الزمني الحالي بدقة للحكم على أحدث نسخة
+        const currentTime = new Date().toISOString();
 
         const clinicData = {
             patients: typeof patients !== 'undefined' ? patients : [],
@@ -4568,22 +4572,23 @@ async function saveToStorage() {
             clinicSettings: typeof clinicSettings !== 'undefined' ? clinicSettings : {},
             prescriptionTemplates: typeof prescriptionTemplates !== 'undefined' ? prescriptionTemplates : [],
             prescriptionFormats: typeof prescriptionFormats !== 'undefined' ? prescriptionFormats : [],
-            lastUpdate: new Date().toISOString()
+            lastUpdate: currentTime 
         };
 
-        // 1. الحفظ السريع (LocalStorage)
+        // 1. الحفظ السريع المحلي
         localStorage.setItem('clinicData', JSON.stringify(clinicData));
 
-        // 2. الحفظ في المستودع العملاق (IndexedDB) - للعمل أوفلاين لسنوات
+        // 2. الحفظ في المستودع الدائم (IndexedDB)
         if (typeof saveToPermanentStorage === 'function') {
             await saveToPermanentStorage('clinicData', clinicData);
         }
 
-        // 3. الرفع السحابي (Firebase)
+        // 3. المزامنة مع السحاب
         if (activeID && activeID !== "default") {
-            db.collection('Clinics').doc(activeID).set(clinicData, { merge: true })
-                .then(() => console.log("تمت المزامنة السحابية بنجاح: " + activeID))
-                .catch(err => console.error("خطأ مزامنة سحابية:", err));
+            // نحدث السحاب مع الختم الزمني الجديد
+            db.collection('Clinics').doc(activeID).set(clinicData) 
+                .then(() => console.log("✅ مزامنة سحابية ناجحة بتوقيت: " + currentTime))
+                .catch(err => console.error("❌ خطأ مزامنة سحابية:", err));
         }
             
     } catch (e) {
@@ -4591,46 +4596,54 @@ async function saveToStorage() {
     }
 }
 
-// --- // --- 2. محرك الاستقبال الذكي والمستقر (Sync Engine v2) ---
+// --- 2. محرك الاستقبال الذكي (المقارنة بالأحدث زمنياً) ---
 async function syncFromCloud() {
     const activeID = clinicID || localStorage.getItem('nabed_clinic_id');
     if (!activeID) return;
 
-    // 1. تحميل فوري من المخزن المحلي (IndexedDB) للسرعة والأوفلاين
+    // أولاً: تحميل النسخة المحلية فوراً للأوفلاين
     if (typeof getFromPermanentStorage === 'function') {
         const localData = await getFromPermanentStorage('clinicData');
         if (localData) {
-            // نطبق البيانات المحلية فوراً كنسخة مبدئية لتسريع الفتح
             applyDataToSystem(localData); 
-            console.log("تم تحميل النسخة المحلية (أوفلاين)");
+            console.log("📦 محمل محلياً");
         }
     }
 
-    // 2. الاستماع للسحاب (مستقبل فقط): هذا الجزء يستقبل التعديلات ولا يعيد رفعها
-    // وبذلك نمنع الموبايل من مسح بيانات اللاب توب
+    // ثانياً: الاستماع للتغييرات مع منطق "من الأحدث؟"
     db.collection('Clinics').doc(activeID).onSnapshot(async (doc) => {
         if (doc.exists) {
             const cloudData = doc.data();
+            const localData = await getFromPermanentStorage('clinicData');
             
-            // تحديث النظام ببيانات السحاب (هي المرجع النهائي عند الاتصال)
-            applyDataToSystem(cloudData);
-            console.log("تم التحديث اللحظي من السحاب بنجاح");
+            const cloudTime = new Date(cloudData.lastUpdate || 0).getTime();
+            const localTime = new Date(localData?.lastUpdate || 0).getTime();
 
-            // حفظ نسخة "كاش" في المخزن المحلي للطوارئ
+            // إذا كان جهازك أحدث (حذفت حجز أو اشتغلت أوفلاين) -> ارفض السحاب وحدثه ببياناتك
+            if (localTime > cloudTime) {
+                console.warn("⚠️ بياناتك أحدث من السحاب. جاري فرض المزامنة...");
+                saveToStorage(); 
+                return;
+            }
+
+            // منع التحديث المتكرر إذا كان الفرق أقل من ثانية
+            if (Math.abs(cloudTime - localTime) < 1000) return; 
+
+            // إذا كان السحاب أحدث فعلاً
+            console.log("📥 استلام بيانات أحدث من السحاب");
+            applyDataToSystem(cloudData);
+
             if (typeof saveToPermanentStorage === 'function') {
                 await saveToPermanentStorage('clinicData', cloudData);
             }
         }
     }, (error) => {
-        console.warn("أنت تعمل حالياً في وضع الأوفلاين الكامل");
+        console.warn("أنت تعمل في وضع الأوفلاين");
     });
 }
 
-// دالة تطبيق البيانات (تحديث الذاكرة والواجهة فقط - تم حذف الرفع التلقائي منها)
 function applyDataToSystem(data) {
     if (!data) return;
-
-    // تحديث المصفوفات العامة بالبيانات الواردة
     patients = data.patients || [];
     visits = data.visits || [];
     appointments = data.appointments || [];
@@ -4638,29 +4651,28 @@ function applyDataToSystem(data) {
     messages = data.messages || [];
     medications = data.medications || [];
     if(data.clinicSettings) clinicSettings = data.clinicSettings;
+    if(data.prescriptionTemplates) prescriptionTemplates = data.prescriptionTemplates;
+    if(data.prescriptionFormats) prescriptionFormats = data.prescriptionFormats;
 
-    // تحديث جميع أجزاء الواجهة فوراً
     renderPatientsList();
     loadAppointments();
     updateStats();
     if(typeof renderMedicationsList === 'function') renderMedicationsList();
     if(typeof loadMessages === 'function') loadMessages();
     
-    // تحديث اسم العيادة في الأعلى
     const clinicNameDisplay = document.getElementById('dashboardClinicName');
     if(clinicNameDisplay) {
         clinicNameDisplay.innerText = "عيادة: " + (clinicID || "جاري التحميل...");
     }
 }
 
-// --- 3. تشغيل المزامنة عند فتح الصفحة ---
 window.addEventListener('load', function() {
     syncFromCloud();
 });
 </script>
 
 <script>
-// كود تحريك أيقونة المحادثة (حافظنا عليه كما هو ليعمل السحب)
+// كود تحريك أيقونة المحادثة
 (function() {
     const dragItem = document.querySelector("#commIcon");
     if (!dragItem) return;
@@ -4697,6 +4709,7 @@ window.addEventListener('load', function() {
     }
 })();
 </script>
+
 <script>
 // ==========================================
 // محرك "نابض" للهوية والتخزين المستقبلي (IndexedDB)
@@ -4778,14 +4791,13 @@ if ('serviceWorker' in navigator) {
         const blob = new Blob([swCode], { type: 'application/javascript' });
         const swUrl = URL.createObjectURL(blob);
         navigator.serviceWorker.register(swUrl)
-            .then(() => console.log('تم تفعيل حصن "نابض" للعمل أوفلاين لسنوات'))
+            .then(() => console.log('تم تفعيل حصن "نابض" للعمل أوفلاين'))
             .catch((err) => console.log('SW Registration Failed:', err));
     });
 }
 
 window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
-    console.log('النظام جاهز للتثبيت بنجاح');
 });
 
 document.addEventListener('DOMContentLoaded', function() {
