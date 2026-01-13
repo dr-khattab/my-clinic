@@ -3946,9 +3946,6 @@ document.getElementById('editInteractionSearchResults').style.display='none';
 }
 });
 
-function saveAppointments(){
-localStorage.setItem('clinicAppointments',JSON.stringify(appointments));
-}
 
 function showAddAppointmentModal(){
 document.getElementById('addAppointmentModal').style.display='block';
@@ -4020,55 +4017,81 @@ pendingList.appendChild(item);
 
 // --- 1. إصلاح الحجوزات والمريض الجديد مع المزامنة السحابية ---
 
-function addAppointmentToConfirmed() {
-    console.log("تم الضغط على زر الحجز الفعلي"); // للتأكد في المتصفح أن الدالة تعمل
+function addAppointmentToConfirmed(){
     try {
-        const patientName = document.getElementById('appointmentPatientName').value.trim();
-        const phoneInput = document.getElementById('appointmentPhone').value.trim() || document.getElementById('appointmentPhoneSearch').value.trim();
-        const fileInput = document.getElementById('appointmentFileNumber').value.trim() || document.getElementById('appointmentFileNumberSearch').value.trim();
-
-        if (!patientName) {
-            alert("يرجى إدخال اسم المريض");
-            return;
+        let patient = null;
+        // جلب العناصر مع التأكد من وجودها (Safety Check)
+        const elName = document.getElementById('appointmentPatientName');
+        const elFile = document.getElementById('appointmentFileNumberSearch');
+        const elPhone = document.getElementById('appointmentPhoneSearch');
+        
+        const patientName = elName ? elName.value.trim() : "";
+        const fileNumberSearch = elFile ? elFile.value.trim() : "";
+        const phoneNumberSearch = elPhone ? elPhone.value.trim() : "";
+        
+        // البحث عن المريض
+        if(patientName){
+            patient = patients.find(p => p.fullName === patientName);
+        } else if(fileNumberSearch){
+            patient = patients.find(p => p.fileNumber === fileNumberSearch);
+        } else if(phoneNumberSearch){
+            patient = patients.find(p => p.phone === phoneNumberSearch);
         }
-
-        let patient = patients.find(p => p.fullName === patientName);
-
-        if (!patient) {
+        
+        // إذا كان المريض جديداً
+        if(!patient && patientName){
             patient = {
                 id: Date.now(),
                 fullName: patientName,
-                phone: phoneInput,
-                fileNumber: fileInput || 'P-' + (patients.length + 1001),
-                ageYears: document.getElementById('appointmentAgeYears').value,
-                ageMonths: document.getElementById('appointmentAgeMonths').value,
-                weight: document.getElementById('appointmentWeight').value,
+                ageYears: document.getElementById('appointmentAgeYears')?.value || "",
+                ageMonths: document.getElementById('appointmentAgeMonths')?.value || "",
+                weight: document.getElementById('appointmentWeight')?.value || "",
+                phone: phoneNumberSearch,
+                chronicHistory: '',
+                fileNumber: fileNumberSearch || 'P-' + (patients.length + 1001),
                 createdAt: new Date().toISOString()
             };
             patients.push(patient);
         }
-
+        
+        if(!patient){
+            alert('الرجاء إدخال اسم المريض على الأقل');
+            return;
+        }
+        
+        // إنشاء الحجز
         const appointment = {
             id: Date.now() + Math.random(),
             patientId: patient.id,
             patientName: patient.fullName,
-            date: document.getElementById('appointmentDate').value,
-            type: document.getElementById('appointmentType').value,
+            date: document.getElementById('appointmentDate')?.value || new Date().toISOString().split('T')[0],
+            type: document.getElementById('appointmentType')?.value || "كشف",
             status: 'مؤكد',
+            ageYears: patient.ageYears,
+            ageMonths: patient.ageMonths,
+            weight: patient.weight,
             phone: patient.phone,
             fileNumber: patient.fileNumber
         };
-
+        
         appointments.push(appointment);
-        saveData();
-        loadAppointments();
+        
+        // الحفظ والتحديث (الخطوات التي كانت تتعطل)
+        
+        if(typeof loadAppointments === 'function') loadAppointments();
+        
+        // إغلاق النافذة فوراً
         closeModal('addAppointmentModal');
-        alert('تم الحجز بنجاح');
-    } catch (e) {
-        console.error(e);
-        alert("حدث خطأ، تأكد من ملء البيانات");
+        
+        alert('تم إضافة الحجز الفعلي بنجاح!');
+        
+    } catch (error) {
+        console.error("خطأ في إضافة الحجز:", error);
+        alert("حدث خطأ تقني، يرجى التأكد من ملء البيانات الأساسية");
+        return;
     }
-}function addAppointmentToPending(){
+}
+function addAppointmentToPending(){
     let patient=null;
     const patientName=document.getElementById('appointmentPatientName').value.trim();
     const fileNumber=document.getElementById('appointmentFileNumberSearch').value.trim();
@@ -4758,28 +4781,5 @@ function updateMessageBadge() {
 }
 
 // تأكد من استدعاء هذه الدالة دورياً مع المزامنة
-setInterval(updateMessageBadge, 3000);</script><script>
-// كود الإصلاح القسري لزر الحجز الفعلي
-(function() {
-    const fixBookingButton = () => {
-        // البحث عن الزر من خلال النص الذي يحتويه
-        const buttons = document.querySelectorAll('button');
-        buttons.forEach(btn => {
-            if (btn.textContent.includes('الفعلية')) {
-                btn.type = 'button'; // منع تحديث الصفحة
-                btn.onclick = function(e) {
-                    e.preventDefault();
-                    if (typeof addAppointmentToConfirmed === 'function') {
-                        addAppointmentToConfirmed();
-                    }
-                };
-            }
-        });
-    };
-
-    // تشغيل الإصلاح عند فتح الصفحة وبعد ثانية للتأكيد
-    fixBookingButton();
-    setTimeout(fixBookingButton, 2000);
-})();
-</script></body>
+setInterval(updateMessageBadge, 3000);</script></body>
 </html>
