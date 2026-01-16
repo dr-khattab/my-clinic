@@ -4552,18 +4552,19 @@ function generateMonthlyReport(){
     document.getElementById('monthlyReportContent').innerHTML=content;
 }
 
-// // --- المحرك الشامل المطور (Nabed Core - V5 العزل التام) ---
+// // --- المحرك الشامل المطور (Nabed Core - V6 نظام الأقفال الذكي) ---
 
-let currentSnapshotListener = null; // متغير للتحكم في المستمع السحابي ومنع التداخل
+let currentSnapshotListener = null;
+let isApplyingCloudUpdate = false; // "قفل" لمنع المسح المتبادل
 
 async function saveToStorage() {
+    if (isApplyingCloudUpdate) return; // إذا كنا نستلم بيانات حالياً، لا ترفع شيئاً للسحاب
+
     try {
         const activeID = typeof clinicID !== 'undefined' ? clinicID : localStorage.getItem('nabed_clinic_id');
-        
         if (!activeID || activeID === "default") return;
 
         const currentTime = new Date().toISOString();
-
         const clinicData = {
             patients: typeof patients !== 'undefined' ? patients : [],
             visits: typeof visits !== 'undefined' ? visits : [],
@@ -4577,7 +4578,6 @@ async function saveToStorage() {
             lastUpdate: currentTime 
         };
 
-        // حفظ محلي مع ربطه بالمعرف لضمان عدم التداخل
         localStorage.setItem('clinicData_' + activeID, JSON.stringify(clinicData));
         localStorage.setItem('nabed_clinic_id', activeID);
 
@@ -4585,8 +4585,9 @@ async function saveToStorage() {
             await saveToPermanentStorage('clinicData_' + activeID, clinicData);
         }
 
+        // استخدام merge لضمان عدم مسح الحقول غير الموجودة
         await db.collection('Clinics').doc(activeID).set(clinicData, { merge: true });
-        console.log("✅ تم الحفظ والمزامنة للعيادة: " + activeID);
+        console.log("✅ تم الحفظ والمزامنة: " + activeID);
             
     } catch (e) {
         console.error("Save Error:", e);
@@ -4595,72 +4596,64 @@ async function saveToStorage() {
 
 async function syncFromCloud() {
     const activeID = typeof clinicID !== 'undefined' ? clinicID : localStorage.getItem('nabed_clinic_id');
-    
     if (!activeID || activeID === "default") return;
 
-    // 1. إغلاق أي مستمع قديم لمنع تداخل العيادات
-    if (currentSnapshotListener) {
-        currentSnapshotListener();
-        console.log("🛑 تم إيقاف مزامنة العيادة السابقة");
-    }
+    if (currentSnapshotListener) currentSnapshotListener();
 
-    // 2. تحميل البيانات المحلية الخاصة بهذه العيادة فقط
     if (typeof getFromPermanentStorage === 'function') {
         const localData = await getFromPermanentStorage('clinicData_' + activeID);
-        if (localData) {
-            applyDataToSystem(localData);
-            console.log("📦 استعادة البيانات المحلية للعيادة: " + activeID);
-        } else {
-            // إذا لم يوجد بيانات محلياً، نصفر المصفوفات فوراً لمنع ظهور بيانات عيادة أخرى
-            clearSystemData();
-        }
+        if (localData) applyDataToSystem(localData);
+        else clearSystemData();
     }
 
-    // 3. بدء الاستماع للسحاب (Reference الأحدث دائماً)
     currentSnapshotListener = db.collection('Clinics').doc(activeID).onSnapshot(async (doc) => {
-        if (doc.exists) {
+        if (doc.exists && !isApplyingCloudUpdate) {
             const cloudData = doc.data();
-            const localData = await getFromPermanentStorage('clinicData_' + activeID);
+            const localData = JSON.parse(localStorage.getItem('clinicData_' + activeID) || '{}');
             
             const cloudTime = new Date(cloudData.lastUpdate || 0).getTime();
             const localTime = new Date(localData?.lastUpdate || 0).getTime();
 
-            // منع الـ Loop: لا نحدث إلا إذا كان هناك فرق حقيقي (أكثر من 3 ثواني)
-            if (cloudTime > localTime + 3000) {
-                console.log("📥 تحديث وارد من السحاب...");
+            // إذا كان السحاب أحدث أو البيانات المحلية فارغة
+            if (cloudTime > localTime) {
+                console.log("📥 استلام بيانات أحدث من السحاب...");
+                isApplyingCloudUpdate = true; // تفعيل القفل
+                
                 applyDataToSystem(cloudData);
+                
                 if (typeof saveToPermanentStorage === 'function') {
                     await saveToPermanentStorage('clinicData_' + activeID, cloudData);
                 }
-            } else if (localTime > cloudTime + 3000) {
-                console.warn("📤 بيانات الجهاز أحدث.. مزامنة للسحاب");
+                localStorage.setItem('clinicData_' + activeID, JSON.stringify(cloudData));
+
+                // فك القفل بعد 3 ثواني لضمان استقرار الواجهة
+                setTimeout(() => { isApplyingCloudUpdate = false; }, 3000);
+
+            } else if (localTime > cloudTime + 5000) { 
+                // نرفع للسحاب فقط إذا كان جهازنا أحدث بـ 5 ثوانٍ كاملة
+                console.warn("📤 بيانات الجهاز أحدث.. تحديث السحاب");
                 saveToStorage();
             }
         }
     });
 }
 
-// دالة لتنظيف الذاكرة تماماً عند تغيير العيادة
 function clearSystemData() {
     patients = []; visits = []; appointments = []; 
     inventory = []; messages = []; medications = [];
-    console.log("🧹 تم تنظيف ذاكرة النظام");
+    console.log("🧹 تم تنظيف الذاكرة");
 }
 
 function applyDataToSystem(data) {
     if (!data) return;
-    
-    // تحديث المصفوفات
     patients = data.patients || [];
     visits = data.visits || [];
     appointments = data.appointments || [];
     inventory = data.inventory || [];
     messages = data.messages || [];
     medications = data.medications || [];
-    
     if(data.clinicSettings) clinicSettings = data.clinicSettings;
     
-    // تحديث الواجهة
     renderPatientsList();
     loadAppointments();
     updateStats();
@@ -4674,41 +4667,8 @@ function applyDataToSystem(data) {
 }
 
 window.addEventListener('load', () => setTimeout(syncFromCloud, 1000));
-</script>
 
-<script>
-// كود التحريك (بدون تغيير)
-(function() {
-    const dragItem = document.querySelector("#commIcon");
-    if (!dragItem) return;
-    let active = false, currentX, currentY, initialX, initialY, xOffset = 0, yOffset = 0;
-    dragItem.addEventListener("touchstart", dragStart, false);
-    document.addEventListener("touchend", dragEnd, false);
-    document.addEventListener("touchmove", drag, false);
-    dragItem.addEventListener("mousedown", dragStart, false);
-    document.addEventListener("mouseup", dragEnd, false);
-    document.addEventListener("mousemove", drag, false);
-    function dragStart(e) {
-        if (e.type === "touchstart") { initialX = e.touches[0].clientX - xOffset; initialY = e.touches[0].clientY - yOffset; }
-        else { initialX = e.clientX - xOffset; initialY = e.clientY - yOffset; }
-        if (e.target === dragItem) active = true;
-    }
-    function dragEnd() { initialX = currentX; initialY = currentY; active = false; }
-    function drag(e) {
-        if (active) {
-            e.preventDefault();
-            let clientX = e.type === "touchmove" ? e.touches[0].clientX : e.clientX;
-            let clientY = e.type === "touchmove" ? e.touches[0].clientY : e.clientY;
-            currentX = clientX - initialX; currentY = clientY - initialY;
-            xOffset = currentX; yOffset = currentY;
-            dragItem.style.transform = `translate3d(${currentX}px, ${currentY}px, 0)`;
-        }
-    }
-})();
-</script>
-
-<script>
-// محرك التخزين المستقر IndexedDB مع دعم العزل
+// --- محرك التخزين المستقر IndexedDB ---
 const dbName = "NabedClinicDB";
 const storeName = "clinicData";
 
@@ -4730,7 +4690,7 @@ async function saveToPermanentStorage(key, data) {
         const tx = db.transaction(storeName, "readwrite");
         tx.objectStore(storeName).put(data, key);
         return tx.complete;
-    } catch (e) { console.error("IndexedDB Save Error", e); }
+    } catch (e) { console.error("IDB Error", e); }
 }
 
 async function getFromPermanentStorage(key) {
@@ -4739,26 +4699,28 @@ async function getFromPermanentStorage(key) {
         return new Promise((resolve) => {
             const request = db.transaction(storeName).objectStore(storeName).get(key);
             request.onsuccess = () => resolve(request.result);
+            request.onerror = () => resolve(null);
         });
     } catch (e) { return null; }
 }
 
-// زر تسجيل الدخول المعدل لمنع التداخل
+// كود تسجيل الدخول
 document.addEventListener('DOMContentLoaded', function() {
     const loginBtn = document.getElementById('loginBtn');
     if (loginBtn) {
         loginBtn.addEventListener('click', function() {
             const idInput = document.getElementById('clinicIdInput').value.trim();
             if (idInput) {
-                clearSystemData(); // مسح البيانات القديمة فوراً
+                clearSystemData();
                 clinicID = idInput;
                 localStorage.setItem('nabed_clinic_id', idInput);
-                syncFromCloud(); // بدء مزامنة العيادة الجديدة فقط
+                syncFromCloud();
             }
         }, true);
     }
 });
 
+// تحديث إشعار الرسائل
 function updateMessageBadge() {
     const chatIcon = document.querySelector('.comm-icon');
     if (!chatIcon || typeof messages === 'undefined') return;
