@@ -1570,16 +1570,28 @@ function handleLogin() {
         localStorage.removeItem('nabed_user_role');
         location.reload();
     }
-}
+} 
 
-function renderPatientsList() { // سطر جديد تماماً
-const tbody=document.getElementById('patientsList');
-tbody.innerHTML='';
-patients.forEach(patient=>{
-const tr=document.createElement('tr');
-tr.innerHTML=`<td>${patient.fileNumber}</td><td>${patient.fullName}</td><td>${getAgeDisplay(patient)}</td><td>${patient.weight||'-'}</td><td>${patient.phone||'-'}</td><td><button class="action-btn record-btn" onclick="showPatientRecord(${patient.id})">السجل المرضي</button><button class="action-btn delete-btn" onclick="deletePatient(${patient.id})">حذف</button></td>`;
-tbody.appendChild(tr);
-});
+function renderPatientsList() {
+    const tbody = document.getElementById('patientsList');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+    if (!Array.isArray(patients)) return;
+    
+    patients.forEach(patient => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td>${patient.fileNumber}</td>
+            <td>${patient.fullName}</td>
+            <td>${getAgeDisplay(patient)}</td>
+            <td>${patient.weight || '-'}</td>
+            <td>${patient.phone || '-'}</td>
+            <td>
+                <button class="action-btn record-btn" onclick="showPatientRecord(${patient.id})">السجل المرضي</button>
+                <button class="action-btn delete-btn" onclick="deletePatient(${patient.id})">حذف</button>
+            </td>`;
+        tbody.appendChild(tr);
+    });
 }
 
 function getAgeDisplay(patient){
