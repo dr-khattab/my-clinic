@@ -43,17 +43,46 @@ db.enablePersistence({ synchronizeTabs: true })
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <style>
-/
+:root {
+    --primary: #2E86C1;
+    --secondary: #27AE60;
+    --accent: #F39C12;
+    --light: #F8F9FA;
+    --dark: #2C3E50;
+    --danger: #E74C3C;
+    --gray: #7F8C8D;
+    --light-gray: #ECF0F1;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Cairo', sans-serif; }
+
+body { 
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important; 
+    min-height: 100vh; 
+    position: relative; 
+}
+
+/* --- إصلاح الأيقونة القابلة للتحريك --- */
 #commIcon {
     position: fixed !important;
     bottom: 20px;
     left: 20px;
-    z-index: 9999 !important; /* لضمان ظهورها فوق كل شيء */
-    cursor: move;
-    touch-action: none; /* ضروري جداً لعمل السحب على الموبايل واللاب */
+    width: 65px;
+    height: 65px;
+    background: var(--primary);
+    border-radius: 50%;
     display: flex !important;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 30px;
+    z-index: 9999 !important;
+    cursor: move;
+    touch-action: none;
+    box-shadow: 0 8px 25px rgba(0,0,0,0.3);
+    border: 3px solid white;
     visibility: visible !important;
-} --- التنسيقات الأساسية للسيستم (بدون تغيير) --- */
+} التنسيقات الأساسية للسيستم (بدون تغيير) --- */
 :root{--primary:#2E86C1;--secondary:#27AE60;--accent:#F39C12;--light:#F8F9FA;--dark:#2C3E50;--danger:#E74C3C;--gray:#7F8C8D;--light-gray:#ECF0F1;}
 *{box-sizing:border-box;margin:0;padding:0;font-family:'Cairo',sans-serif;}
 body{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);min-height:100vh;padding:20px;position:relative;}
@@ -1349,33 +1378,9 @@ footerTemplatesNew=JSON.parse(localStorage.getItem('footerTemplatesNew'))||[],
 appointments=JSON.parse(localStorage.getItem('clinicAppointments'))||[],
 currentAppointmentPatient=null,
 currentUserType='doctor',
-selectedLoginUser='doctor',
 messages=JSON.parse(localStorage.getItem('clinicMessages'))||[],
 resizingImage=null,rotatingImage=null,imageHandles=[],
-commIconDraggable={isDragging:false,offsetX:0,offsetY:0};
-
-const medicineTypeTranslations={
-'Syrup':'Syrup (شراب)',
-'Suspension':'Suspension (معلق)',
-'Ampule':'Ampule (أمبولة)',
-'Vial':'Vial (قارورة)',
-'Tab':'Tab (قرص)',
-'Cap':'Cap (كبسولة)',
-'Sachets':'Sachets (كيس)',
-'Oral Film':'Oral Film (لزقة في الفم)',
-'Supp':'Supp (لبوس)',
-'cream':'cream (كريم)',
-'ointment':'ointment (مرهم)',
-'lotion':'lotion (لوشن)',
-'Iv Fluid':'Iv Fluid (محلول وريدي)',
-'Other':'Other (أخرى)'
-};
-
-function setupDoctorDashboard(){
-document.getElementById('loginPage').style.display='none';
-document.getElementById('dashboard').style.display='block';
-
-// تأمين كود العيادة وتفعيل المزامنة السحابية فوراً
+commIconDraggable={isDragging:false,offsetX:0,offsetY:0};// تأمين كود العيادة وتفعيل المزامنة السحابية فوراً
 if(!clinicID) clinicID = localStorage.getItem('nabed_clinic_id');
 document.getElementById('currentUser').textContent=clinicSettings.doctorName;
 document.getElementById('dashboardClinicName').textContent = "عيادة: " + (clinicID || "نابض");
@@ -1497,7 +1502,8 @@ additionalInstructions='';
 
 // --- محرك نابض النهائي (بدون تكرار) ---
 // ملاحظة: المتغيرات معرفة مرة واحدة فقط هنا
-// تأكد من عدم وجود let currentUserType = ... فوق هذا السطر أو تحته
+// تأكد من عدم وجود let currentUserType = '';
+let selectedLoginUser = ''; // 
 function selectUser(user) {
     selectedLoginUser = user;
     
@@ -1559,15 +1565,14 @@ function handleLogin() {
     if(title) title.innerText = `عيادة: ${clinicID}`;
 
     console.log("تم الدخول بنجاح. معرف العيادة: " + clinicID);
-}
-
-function logout() {
+}function logout() {
     if(confirm("هل تريد تسجيل الخروج؟")) {
         localStorage.removeItem('nabed_user_role');
-        // لا نحذف كود العيادة (nabed_clinic_id) لنسهل الدخول المرة القادمة، أو نحذفه لو أردت أماناً أعلى
         location.reload();
     }
-}function renderPatientsList(){
+}
+
+function renderPatientsList() { // سطر جديد تماماً
 const tbody=document.getElementById('patientsList');
 tbody.innerHTML='';
 patients.forEach(patient=>{
@@ -4562,19 +4567,19 @@ function generateMonthlyReport(){
     document.getElementById('monthlyReportContent').innerHTML=content;
 }
 
-//// --- المحرك الذهبي (Nabed Core - V8 الاستقرار التام) ---
-
-let currentSnapshotListener = null;
+/<script>
+// --- المحرك المطور V9 (الاستقرار التام) ---
 let isUpdatingFromCloud = false; 
+let currentSnapshotListener = null;
 
-// دالة الحفظ المعدلة: تمنع الرفع إذا كان هناك تحديث سحابي جارٍ
+// 1. نظام الحفظ الذكي (يمنع الرفع أثناء الاستلام)
 async function saveToStorage() {
-    if (isUpdatingFromCloud) return; 
+    if (isUpdatingFromCloud) return; // العزل نشط، لا ترفع شيئاً
+
+    const activeID = localStorage.getItem('nabed_clinic_id');
+    if (!activeID || activeID === "default") return;
 
     try {
-        const activeID = typeof clinicID !== 'undefined' ? clinicID : localStorage.getItem('nabed_clinic_id');
-        if (!activeID || activeID === "default") return;
-
         const currentTime = new Date().toISOString();
         const clinicData = {
             patients: typeof patients !== 'undefined' ? patients : [],
@@ -4587,21 +4592,25 @@ async function saveToStorage() {
             lastUpdate: currentTime 
         };
 
+        // حفظ محلي أولاً
         localStorage.setItem('clinicData_' + activeID, JSON.stringify(clinicData));
         
-        // رفع للسحاب مع التأكد من عدم المسح
+        // رفع للسحاب مع دمج البيانات
         await db.collection('Clinics').doc(activeID).set(clinicData, { merge: true });
-        console.log("✅ تم تحديث السحاب بنجاح");
-    } catch (e) { console.error("Error saving:", e); }
+        console.log("✅ تم الحفظ والمزامنة بنجاح");
+    } catch (e) {
+        console.error("خطأ في الحفظ:", e);
+    }
 }
 
-async function syncFromCloud() {
-    const activeID = typeof clinicID !== 'undefined' ? clinicID : localStorage.getItem('nabed_clinic_id');
-    if (!activeID || activeID === "default") return;
+// 2. نظام الاستلام مع قفل العزل
+function syncFromCloud() {
+    const activeID = localStorage.getItem('nabed_clinic_id');
+    if (!activeID) return;
 
     if (currentSnapshotListener) currentSnapshotListener();
 
-    currentSnapshotListener = db.collection('Clinics').doc(activeID).onSnapshot(async (doc) => {
+    currentSnapshotListener = db.collection('Clinics').doc(activeID).onSnapshot((doc) => {
         if (!doc.exists) return;
 
         const cloudData = doc.data();
@@ -4610,19 +4619,15 @@ async function syncFromCloud() {
         const cloudTime = new Date(cloudData.lastUpdate || 0).getTime();
         const localTime = new Date(localData.lastUpdate || 0).getTime();
 
-        // لا نحدث إلا إذا كان السحاب أحدث فعلاً بفارق ثانية واحدة على الأقل
-        if (cloudTime > localTime + 1000) {
-            console.log("📥 استلام بيانات جديدة من السحاب...");
-            isUpdatingFromCloud = true; // تفعيل الحماية
+        // تحديث فقط إذا كان السحاب أحدث
+        if (cloudTime > localTime) {
+            console.log("📥 استلام بيانات أحدث من السحاب...");
+            isUpdatingFromCloud = true; // تفعيل العزل
 
             applyDataToSystem(cloudData);
             localStorage.setItem('clinicData_' + activeID, JSON.stringify(cloudData));
-            
-            if (typeof saveToPermanentStorage === 'function') {
-                await saveToPermanentStorage('clinicData_' + activeID, cloudData);
-            }
 
-            // فك الحماية بعد فترة قصيرة لضمان استقرار المصفوفات
+            // فك العزل بعد ثانيتين لضمان استقرار العمليات
             setTimeout(() => { isUpdatingFromCloud = false; }, 2000);
         }
     });
@@ -4630,91 +4635,52 @@ async function syncFromCloud() {
 
 function applyDataToSystem(data) {
     if (!data) return;
-    patients = data.patients || [];
-    visits = data.visits || [];
-    appointments = data.appointments || [];
-    inventory = data.inventory || [];
-    messages = data.messages || [];
-    medications = data.medications || [];
+    if (Array.isArray(data.patients)) patients = data.patients;
+    if (Array.isArray(data.visits)) visits = data.visits;
+    if (Array.isArray(data.appointments)) appointments = data.appointments;
+    if (Array.isArray(data.medications)) medications = data.medications;
     
-    // إعادة بناء الواجهة
+    // تحديث الواجهات
     if (typeof renderPatientsList === 'function') renderPatientsList();
-    if (typeof loadAppointments === 'function') loadAppointments();
-    if (typeof loadMessages === 'function') loadMessages();
-    
-    const nameDisp = document.getElementById('dashboardClinicName');
-    if(nameDisp) nameDisp.innerText = "عيادة: " + (typeof clinicID !== 'undefined' ? clinicID : localStorage.getItem('nabed_clinic_id'));
+    if (typeof updateAppointmentsUI === 'function') updateAppointmentsUI();
 }
 
-// --- إصلاح أيقونة المحادثة وحركتها ---
+// 3. محرك تحريك الأيقونة (إصلاح شامل)
 function makeIconDraggable() {
-    const dragItem = document.querySelector("#commIcon");
-    if (!dragItem) return;
+    const icon = document.getElementById("commIcon");
+    if (!icon) return;
 
-    // إعادة تعيين الستايل برمجياً للتأكد من ظهورها
-    dragItem.style.position = "fixed";
-    dragItem.style.zIndex = "9999";
-    dragItem.style.left = "20px";
-    dragItem.style.bottom = "20px";
+    let active = false, currentX, currentY, initialX, initialY, xOffset = 0, yOffset = 0;
 
-    let active = false;
-    let currentX, currentY, initialX, initialY;
-    let xOffset = 0, yOffset = 0;
+    icon.addEventListener("touchstart", dragStart, {passive: false});
+    icon.addEventListener("touchend", dragEnd, {passive: false});
+    icon.addEventListener("touchmove", drag, {passive: false});
+    icon.addEventListener("mousedown", dragStart, false);
+    document.addEventListener("mouseup", dragEnd, false);
+    document.addEventListener("mousemove", drag, false);
 
     function dragStart(e) {
-        if (e.type === "touchstart") {
-            initialX = e.touches[0].clientX - xOffset;
-            initialY = e.touches[0].clientY - yOffset;
-        } else {
-            initialX = e.clientX - xOffset;
-            initialY = e.clientY - yOffset;
-        }
-        if (e.target === dragItem || dragItem.contains(e.target)) active = true;
+        initialX = (e.type === "touchstart" ? e.touches[0].clientX : e.clientX) - xOffset;
+        initialY = (e.type === "touchstart" ? e.touches[0].clientY : e.clientY) - yOffset;
+        if (e.target === icon || icon.contains(e.target)) active = true;
     }
-
-    function dragEnd() {
-        initialX = currentX;
-        initialY = currentY;
-        active = false;
-    }
-
+    function dragEnd() { initialX = currentX; initialY = currentY; active = false; }
     function drag(e) {
         if (active) {
             e.preventDefault();
-            let cx = e.type === "touchmove" ? e.touches[0].clientX : e.clientX;
-            let cy = e.type === "touchmove" ? e.touches[0].clientY : e.clientY;
-            currentX = cx - initialX;
-            currentY = cy - initialY;
-            xOffset = currentX;
-            yOffset = currentY;
-            dragItem.style.transform = `translate3d(${currentX}px, ${currentY}px, 0)`;
+            currentX = (e.type === "touchmove" ? e.touches[0].clientX : e.clientX) - initialX;
+            currentY = (e.type === "touchmove" ? e.touches[0].clientY : e.clientY) - initialY;
+            xOffset = currentX; yOffset = currentY;
+            icon.style.transform = `translate3d(${currentX}px, ${currentY}px, 0)`;
         }
     }
-
-    document.addEventListener("touchstart", dragStart, {passive: false});
-    document.addEventListener("touchend", dragEnd, {passive: false});
-    document.addEventListener("touchmove", drag, {passive: false});
-    document.addEventListener("mousedown", dragStart, false);
-    document.addEventListener("mouseup", dragEnd, false);
-    document.addEventListener("mousemove", drag, false);
 }
 
-// تشغيل النظام
-window.addEventListener('load', () => {
+// تشغيل النظام عند التحميل
+window.addEventListener('DOMContentLoaded', () => {
     syncFromCloud();
-    setTimeout(makeIconDraggable, 1500); // تأخير بسيط لضمان تحميل العناصر
+    setTimeout(makeIconDraggable, 2000);
 });
-
-// دالة الدخول المعدلة
-document.addEventListener('click', function(e) {
-    if (e.target && e.target.id === 'loginBtn') {
-        const idInput = document.getElementById('clinicIdInput').value.trim();
-        if (idInput) {
-            localStorage.setItem('nabed_clinic_id', idInput);
-            clinicID = idInput;
-            syncFromCloud();
-        }
-    }
-});
+</script>
 </script></body>
 </html>
