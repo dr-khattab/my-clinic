@@ -1519,42 +1519,42 @@ function showUserSelector() {
     document.getElementById('userSelector').style.display = 'flex';
     document.getElementById('password').value = '';
 }
-   // هذه هي الدالة التي كانت مفقودة!
 function handleLogin() {
     const inputCodeElement = document.getElementById('password');
     if (!inputCodeElement) return;
     
     const inputCode = inputCodeElement.value.trim();
-
     if (inputCode.length < 3) {
         alert("من فضلك أدخل كود العيادة بشكل صحيح");
         return;
     }
 
-    // تعيين هوية العيادة في الذاكرة
     window.clinicID = inputCode;
     window.currentUserType = window.selectedLoginUser || 'doctor';
 
-    // حفظ في الذاكرة المحلية
     localStorage.setItem('nabed_clinic_id', window.clinicID);
     localStorage.setItem('nabed_user_role', window.currentUserType);
 
-    // تحميل بيانات هذه العيادة فوراً
-    if (typeof loadSystemData === 'function') {
-        loadSystemData();
-    }
+    if (typeof loadSystemData === 'function') loadSystemData();
 
-    // الانتقال للوحة التحكم
-    document.getElementById('loginPage').style.display = 'none';
-    document.getElementById('dashboard').style.display = 'block';
+    // --- التوجيه الذكي حسب نوع المستخدم ---
+    if (window.currentUserType === 'secretary') {
+        if (typeof setupSecretaryDashboard === 'function') {
+            setupSecretaryDashboard();
+        } else {
+            alert("لوحة السكرتارية قيد التجهيز، سيتم تحويلك للوحة العامة");
+            document.getElementById('loginPage').style.display = 'none';
+            document.getElementById('dashboard').style.display = 'block';
+        }
+    } else {
+        document.getElementById('loginPage').style.display = 'none';
+        document.getElementById('dashboard').style.display = 'block';
+    }
     
     const title = document.getElementById('dashboardClinicName');
     if(title) title.innerText = `عيادة: ${window.clinicID}`;
 
-    // تشغيل المزامنة السحابية
     if(typeof syncFromCloud === 'function') syncFromCloud();
-    
-    console.log("✅ تم الدخول بنجاح للعيادة: " + window.clinicID);
 }
 function logout() {
     if(confirm("هل تريد تسجيل الخروج؟")) {
@@ -4367,25 +4367,45 @@ function loadMessages(){
     container.scrollTop = container.scrollHeight;
 }
 
-// 1. إرسال الرسالة مع تفعيل "لم تقرأ بعد"
-function sendMessage(){
-    const input = document.getElementById('commInput');
-    const text = input.value.trim();
-    if(!text) return;
-    
-    const message = {
-        id: Date.now() + Math.random(), // ID فريد جداً للحذف بدقة
-        sender: currentUserType,
-        text: text,
-        time: new Date().toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'}),
-        seen: false // الرسالة تبدأ كـ غير مقروءة
+// 1. // 1. إرسال الرسالة مع التحديث الفوري
+// 1. دالة إرسال الرسائل (مصلحة ومعزولة)
+function sendMessage() {
+    const msgInput = document.getElementById('chatInput');
+    if (!msgInput || !msgInput.value.trim()) return;
+
+    // إنشاء كائن الرسالة
+    const newMessage = {
+        sender: window.currentUserType || 'doctor',
+        text: msgInput.value.trim(),
+        time: new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
+        timestamp: new Date().getTime(),
+        seen: false
     };
+
+    // التأكد من وجود المصفوفة في الذاكرة
+    if (typeof messages === 'undefined' || !Array.isArray(messages)) {
+        window.messages = [];
+    }
     
-    messages.push(message);
-    saveToStorage(); // المزامنة السحابية فوراً ليظهر التنبيه للطرف الآخر
-    input.value = '';
-    loadMessages();
+    // إضافة الرسالة
+    messages.push(newMessage);
+
+    // تنظيف الحقل وتحديث الواجهة
+    msgInput.value = '';
+    if (typeof renderMessages === 'function') {
+        renderMessages();
+    } else if (typeof loadMessages === 'function') {
+        loadMessages();
+    }
+
+    // الحفظ والمزامنة السحابية فوراً
+    if (typeof saveToStorage === 'function') {
+        saveToStorage();
+    }
+    console.log("✅ تم إرسال الرسالة بنجاح");
 }
+
+// 2. دالة فتح وإغلاق صندوق المحادثة
 function toggleCommModal() {
     const modal = document.getElementById('commModal');
     if (!modal) return;
@@ -4395,25 +4415,33 @@ function toggleCommModal() {
     } else {
         modal.style.display = 'flex';
         
-        // بمجرد فتح الشات: اجعل كل رسائل الطرف الآخر "مقروءة"
+        // بمجرد فتح الشات: تحديث حالة الرسائل لـ "مقروءة"
         let changed = false;
-        messages.forEach(msg => {
-            if (msg.sender !== currentUserType && !msg.seen) {
-                msg.seen = true;
-                changed = true;
-            }
-        });
+        if (typeof messages !== 'undefined' && Array.isArray(messages)) {
+            messages.forEach(msg => {
+                if (msg.sender !== (window.currentUserType || 'doctor') && !msg.seen) {
+                    msg.seen = true;
+                    changed = true;
+                }
+            });
+        }
         
-        if (changed) saveToStorage(); // تحديث السحابة ليرى الطرف الآخر "صحين زرق"
+        if (changed && typeof saveToStorage === 'function') {
+            saveToStorage();
+        }
         
-        loadMessages(); // إعادة عرض الرسائل لتظهر علامات الصح
+        // إعادة عرض الرسائل
+        if (typeof renderMessages === 'function') {
+            renderMessages();
+        } else if (typeof loadMessages === 'function') {
+            loadMessages();
+        }
         
-        // إزالة النقطة الحمراء (التنبيه)
+        // إزالة تنبيه النقطة الحمراء
         const icon = document.getElementById('commIcon');
         if (icon) icon.classList.remove('has-message');
     }
-}
-// 2. تحميل الرسائل من المتصفح (معدلة لتعمل مع المزامنة)
+}// 2. تحميل الرسائل من المتصفح (معدلة لتعمل مع المزامنة)
 function loadMessagesFromStorage(){
     const saved = localStorage.getItem('clinicMessages');
     if(saved){
@@ -4668,10 +4696,13 @@ function applyDataToSystem(data) {
     if (Array.isArray(data.appointments)) appointments = data.appointments;
     if (Array.isArray(data.medications)) medications = data.medications;
     
-    // تحديث كل القوائم في الواجهة
+    // إضافة الرسائل للمزامنة
+    if (Array.isArray(data.messages)) {
+        messages = data.messages;
+        if (typeof renderMessages === 'function') renderMessages();
+    }
+    
     if (typeof renderPatientsList === 'function') renderPatientsList();
-    if (typeof renderMedicationsList === 'function') renderMedicationsList();
-    if (typeof loadAppointments === 'function') loadAppointments();
     if (typeof updateStats === 'function') updateStats();
 }
 
