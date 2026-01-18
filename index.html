@@ -361,8 +361,7 @@ body::before{content:'';position:absolute;top:0;left:0;width:100%;height:100%;ba
     </div>
     
     <div class="user-selector" id="userSelector">
-        <div class="user-card" onclick="selectUser('doctor')" id="doctorCard">
-            <div class="user-icon">👨‍⚕️</div>
+        <div class="user-card" onclick="selectUser('doctor')" id="doctorCard">       <div class="user-icon">👨‍⚕️</div>
             <div class="user-title">DOCTOR</div>
             <div class="user-desc">الدخول كطبيب رئيسي</div>
         </div>
@@ -1380,48 +1379,41 @@ currentAppointmentPatient=null,
 currentUserType='doctor',
 messages=JSON.parse(localStorage.getItem('clinicMessages'))||[],
 resizingImage=null,rotatingImage=null,imageHandles=[],
-commIconDraggable={isDragging:false,offsetX:0,offsetY:0};// تأمين كود العيادة وتفعيل المزامنة السحابية فوراً
-if(!clinicID) clinicID = localStorage.getItem('nabed_clinic_id');
-document.getElementById('currentUser').textContent=clinicSettings.doctorName;
-document.getElementById('dashboardClinicName').textContent = "عيادة: " + (clinicID || "نابض");
+commIconDraggable={isDragging:false,offsetX:0,offsetY:0};
 
-if(typeof syncFromCloud === 'function') syncFromCloud();
+// --- إعدادات التشغيل الآمن ---
+clinicID = localStorage.getItem('nabed_clinic_id') || '';
+clinicSettings = JSON.parse(localStorage.getItem('clinicSettings')) || { doctorName: 'طبيب' };
 
-showAllSections();
-renderPatientsList();
-renderMedicationsList();
-updateStats();
-loadFormatTemplates();
-renderSavedPrescriptions();
-const savedHeader=localStorage.getItem('currentHeader');
-const savedFooter=localStorage.getItem('currentFooter');
-if(savedHeader)currentHeader=JSON.parse(savedHeader);
-if(savedFooter)currentFooter=JSON.parse(savedFooter);
-const today=new Date().toISOString().split('T')[0];
-document.getElementById('appointmentDate').value=today;
-loadAppointments();
-loadMessages();
+if(document.getElementById('currentUser')) {
+    document.getElementById('currentUser').textContent = clinicSettings.doctorName || 'طبيب';
+}
+if(document.getElementById('dashboardClinicName')) {
+    document.getElementById('dashboardClinicName').textContent = "عيادة: " + (clinicID || "نابض");
 }
 
+function initializeSystem() {
+    if(typeof syncFromCloud === 'function') syncFromCloud();
+    if(typeof showAllSections === 'function') showAllSections();
+    if(typeof renderPatientsList === 'function') renderPatientsList();
+    
+    const today = new Date().toISOString().split('T')[0];
+    const dateInput = document.getElementById('appointmentDate');
+    if(dateInput) dateInput.value = today;
+}
+
+// دالة لوحة السكرتارية (كي لا تفقدها)
 function setupSecretaryDashboard(){
-document.getElementById('loginPage').style.display='none';
-document.getElementById('dashboard').style.display='block';
-
-// تأمين كود العيادة وتفعيل المزامنة السحابية فوراً
-if(!clinicID) clinicID = localStorage.getItem('nabed_clinic_id');
-document.getElementById('currentUser').textContent='سكرتير العيادة';
-document.getElementById('dashboardClinicName').textContent= (clinicID || clinicSettings.clinicName) +' - نظام السكرتير';
-
-if(typeof syncFromCloud === 'function') syncFromCloud();
-
-setupSecretarySections();
-const today=new Date().toISOString().split('T')[0];
-document.getElementById('appointmentDate').value=today;
-loadAppointments();
-loadMessages();
+    document.getElementById('loginPage').style.display='none';
+    document.getElementById('dashboard').style.display='block';
+    if(!clinicID) clinicID = localStorage.getItem('nabed_clinic_id');
+    document.getElementById('currentUser').textContent='سكرتير العيادة';
+    document.getElementById('dashboardClinicName').textContent= (clinicID || "نابض") +' - نظام السكرتير';
+    if(typeof syncFromCloud === 'function') syncFromCloud();
+    if(typeof setupSecretarySections === 'function') setupSecretarySections();
 }
 
-function setupSecretarySections(){
+setTimeout(initializeSystem, 1000);function setupSecretarySections(){
 const navButtons=document.querySelectorAll('.nav-btn');
 navButtons.forEach(btn=>{
 const btnText=btn.textContent;
@@ -1503,19 +1495,18 @@ additionalInstructions='';
 // --- محرك نابض النهائي (بدون تكرار) ---
 // ملاحظة: المتغيرات معرفة مرة واحدة فقط هنا
 // تأكد من عدم وجود let currentUserType = '';
-let selectedLoginUser = ''; // 
+let selectedLoginUser = ''; 
+
 function selectUser(user) {
-    selectedLoginUser = user;
+    if (typeof window.selectedLoginUser === 'undefined') { window.selectedLoginUser = ''; }
+    window.selectedLoginUser = user;
     
-    // إخفاء واجهة الاختيار وإظهار واجهة الباسورد
     document.getElementById('userSelector').style.display = 'none';
     document.getElementById('loginForm').style.display = 'block';
 
-    // تحديث النصوص
     const label = document.querySelector('#loginForm .form-label');
     if(label) label.innerText = "أدخل كود تفعيل العيادة (Clinic ID)";
     
-    // تحسين بصري (اختياري)
     const docCard = document.getElementById('doctorCard');
     const secCard = document.getElementById('secretaryCard');
     if(docCard) docCard.classList.remove('selected');
@@ -1523,54 +1514,46 @@ function selectUser(user) {
     if(user === 'doctor' && docCard) docCard.classList.add('selected');
     if(user === 'secretary' && secCard) secCard.classList.add('selected');
 }
-
 function showUserSelector() {
     document.getElementById('loginForm').style.display = 'none';
     document.getElementById('userSelector').style.display = 'flex';
     document.getElementById('password').value = '';
 }
-
+   // هذه هي الدالة التي كانت مفقودة!
 function handleLogin() {
-    const inputCode = document.getElementById('password').value.trim();
+    const inputCodeElement = document.getElementById('password');
+    // حماية ضد الأخطاء
+    if (!inputCodeElement) { console.error("حقل الباسورد غير موجود"); return; }
     
+    const inputCode = inputCodeElement.value.trim();
+
     if (inputCode.length < 3) {
         alert("من فضلك أدخل كود العيادة بشكل صحيح");
         return;
     }
 
-    // 1. تعيين كود العيادة
-    clinicID = inputCode;
-    currentUserType = selectedLoginUser;
+    // تعريف المتغيرات في الذاكرة العامة
+    window.clinicID = inputCode;
+    window.currentUserType = window.selectedLoginUser || 'doctor';
 
-    // 2. الحفظ في الذاكرة
-    localStorage.setItem('nabed_clinic_id', clinicID);
-    localStorage.setItem('nabed_user_role', currentUserType);
-    
-    // للحفاظ على توافق الكود القديم (احتياطي)
-    localStorage.setItem('activeClinicId', clinicID); 
+    localStorage.setItem('nabed_clinic_id', window.clinicID);
+    localStorage.setItem('nabed_user_role', window.currentUserType);
 
-    // 3. توجيه المستخدم
-    if (currentUserType === 'doctor') {
-        setupDoctorDashboard();
-    } else {
-        setupSecretaryDashboard();
-    }
-
-    // 4. فتح السيستم
     document.getElementById('loginPage').style.display = 'none';
     document.getElementById('dashboard').style.display = 'block';
     
-    // تحديث اسم العيادة في الأعلى
     const title = document.getElementById('dashboardClinicName');
-    if(title) title.innerText = `عيادة: ${clinicID}`;
+    if(title) title.innerText = `عيادة: ${window.clinicID}`;
 
-    console.log("تم الدخول بنجاح. معرف العيادة: " + clinicID);
-}function logout() {
+    if(typeof syncFromCloud === 'function') syncFromCloud();
+    console.log("تم الدخول بنجاح");
+}
+function logout() {
     if(confirm("هل تريد تسجيل الخروج؟")) {
         localStorage.removeItem('nabed_user_role');
         location.reload();
-    }
-} 
+    } 
+}
 
 function renderPatientsList() {
     const tbody = document.getElementById('patientsList');
@@ -4577,10 +4560,10 @@ function generateMonthlyReport(){
     });
     const content=`<div class="form-row"><div class="form-container" style="text-align:center"><h4>إجمالي الحجوزات</h4><div style="font-size:48px;color:var(--primary);font-weight:bold">${monthAppointments.length}</div></div><div class="form-container" style="text-align:center"><h4>إجمالي الزيارات</h4><div style="font-size:48px;color:var(--accent);font-weight:bold">${monthVisits.length}</div><div style="font-size:14px;color:#666">كشف: ${monthVisits.filter(v=>!v.type||v.type==='كشف').length} - استشارة: ${monthVisits.filter(v=>v.type==='استشارة').length}</div></div><div class="form-container" style="text-align:center"><h4>مرضى جدد</h4><div style="font-size:48px;color:var(--secondary);font-weight:bold">${monthPatients.length}</div></div></div><div class="form-container"><h4>إحصائيات أسبوعية</h4><div id="monthlyStatsChart"></div></div>`;
     document.getElementById('monthlyReportContent').innerHTML=content;
-}
+}</script>
 
-/<script>
-// --- المحرك المطور V9 (الاستقرار التام) ---
+
+<script>// --- المحرك المطور V9 (الاستقرار التام) ---
 let isUpdatingFromCloud = false; 
 let currentSnapshotListener = null;
 
@@ -4693,6 +4676,5 @@ window.addEventListener('DOMContentLoaded', () => {
     syncFromCloud();
     setTimeout(makeIconDraggable, 2000);
 });
-</script>
 </script></body>
 </html>
