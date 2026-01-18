@@ -1521,17 +1521,32 @@ function showUserSelector() {
 }
    // هذه هي الدالة التي كانت مفقودة!
 function handleLogin() {
-    const inputCodeElement = document.getElementById('password');
-    // حماية ضد الأخطاء
-    if (!inputCodeElement) { console.error("حقل الباسورد غير موجود"); return; }
-    
-    const inputCode = inputCodeElement.value.trim();
-
+    const inputCode = document.getElementById('password').value.trim();
     if (inputCode.length < 3) {
         alert("من فضلك أدخل كود العيادة بشكل صحيح");
         return;
     }
 
+    // تعيين هوية العيادة
+    window.clinicID = inputCode;
+    window.currentUserType = window.selectedLoginUser || 'doctor';
+
+    localStorage.setItem('nabed_clinic_id', window.clinicID);
+    localStorage.setItem('nabed_user_role', window.currentUserType);
+
+    // --- أهم سطر: استدعاء البيانات الخاصة بهذه العيادة فقط ---
+    loadSystemData(); 
+    // -------------------------------------------------------
+
+    document.getElementById('loginPage').style.display = 'none';
+    document.getElementById('dashboard').style.display = 'block';
+    
+    const title = document.getElementById('dashboardClinicName');
+    if(title) title.innerText = `عيادة: ${window.clinicID}`;
+
+    if(typeof syncFromCloud === 'function') syncFromCloud();
+    console.log("تم الدخول وتفعيل العزل للعيادة: " + window.clinicID);
+}
     // تعريف المتغيرات في الذاكرة العامة
     window.clinicID = inputCode;
     window.currentUserType = window.selectedLoginUser || 'doctor';
@@ -4563,45 +4578,71 @@ function generateMonthlyReport(){
 }</script>
 
 
-<script>// --- المحرك المطور V9 (الاستقرار التام) ---
+<script>
+// --- المحرك المطور V10 (نظام العزل التام والمزامنة المستقرة) ---
 let isUpdatingFromCloud = false; 
 let currentSnapshotListener = null;
 
-// 1. نظام الحفظ الذكي (يمنع الرفع أثناء الاستلام)
+// 1. نظام الحفظ الذكي المعزول
 async function saveToStorage() {
-    if (isUpdatingFromCloud) return; // العزل نشط، لا ترفع شيئاً
+    if (isUpdatingFromCloud) return; 
 
-    const activeID = localStorage.getItem('nabed_clinic_id');
-    if (!activeID || activeID === "default") return;
+    // التأكد من وجود ID عيادة صالح
+    const activeID = window.clinicID || localStorage.getItem('nabed_clinic_id');
+    if (!activeID || activeID === "default") {
+        console.warn("⚠️ لم يتم الحفظ: لم يتم التعرف على كود العيادة");
+        return;
+    }
 
     try {
         const currentTime = new Date().toISOString();
         const clinicData = {
-            patients: typeof patients !== 'undefined' ? patients : [],
-            visits: typeof visits !== 'undefined' ? visits : [],
-            appointments: typeof appointments !== 'undefined' ? appointments : [],
-            inventory: typeof inventory !== 'undefined' ? inventory : [],
-            medications: typeof medications !== 'undefined' ? medications : [],
-            messages: typeof messages !== 'undefined' ? messages : [],
-            clinicSettings: typeof clinicSettings !== 'undefined' ? clinicSettings : {},
+            patients: (typeof patients !== 'undefined') ? patients : [],
+            visits: (typeof visits !== 'undefined') ? visits : [],
+            appointments: (typeof appointments !== 'undefined') ? appointments : [],
+            medications: (typeof medications !== 'undefined') ? medications : [],
+            messages: (typeof messages !== 'undefined') ? messages : [],
+            clinicSettings: (typeof clinicSettings !== 'undefined') ? clinicSettings : {},
             lastUpdate: currentTime 
         };
 
-        // حفظ محلي أولاً
+        // حفظ محلي معزول بمفتاح خاص للعيادة
         localStorage.setItem('clinicData_' + activeID, JSON.stringify(clinicData));
         
-        // رفع للسحاب مع دمج البيانات
-        await db.collection('Clinics').doc(activeID).set(clinicData, { merge: true });
-        console.log("✅ تم الحفظ والمزامنة بنجاح");
+        // رفع للسحاب (Firebase) داخل مستند العيادة الخاص
+        if (typeof db !== 'undefined') {
+            await db.collection('Clinics').doc(activeID).set(clinicData, { merge: true });
+            console.log("✅ تم الحفظ بنجاح للعيادة: " + activeID);
+        }
     } catch (e) {
-        console.error("خطأ في الحفظ:", e);
+        console.error("❌ خطأ في الحفظ:", e);
     }
 }
 
-// 2. نظام الاستلام مع قفل العزل
-function syncFromCloud() {
-    const activeID = localStorage.getItem('nabed_clinic_id');
+// 2. نظام التحميل المعزول (يمنع تداخل البيانات)
+function loadSystemData() {
+    const activeID = window.clinicID || localStorage.getItem('nabed_clinic_id');
     if (!activeID) return;
+
+    const storageKey = 'clinicData_' + activeID;
+    const rawData = localStorage.getItem(storageKey);
+    
+    if (rawData) {
+        const data = JSON.parse(rawData);
+        applyDataToSystem(data);
+        console.log("📥 تم تحميل بيانات العيادة المعزولة من الذاكرة المحلية");
+    } else {
+        // إذا دخلت عيادة جديدة، نظف الذاكرة الحالية فوراً
+        patients = []; visits = []; appointments = []; messages = [];
+        if (typeof renderPatientsList === 'function') renderPatientsList();
+        console.log("✨ عيادة جديدة: تم تهيئة واجهة نظيفة");
+    }
+}
+
+// 3. نظام المزامنة السحابية (التحديث التلقائي)
+function syncFromCloud() {
+    const activeID = window.clinicID || localStorage.getItem('nabed_clinic_id');
+    if (!activeID || activeID === "default") return;
 
     if (currentSnapshotListener) currentSnapshotListener();
 
@@ -4614,17 +4655,16 @@ function syncFromCloud() {
         const cloudTime = new Date(cloudData.lastUpdate || 0).getTime();
         const localTime = new Date(localData.lastUpdate || 0).getTime();
 
-        // تحديث فقط إذا كان السحاب أحدث
+        // لا نحدث إلا إذا كانت بيانات السحاب أحدث من المحلي
         if (cloudTime > localTime) {
-            console.log("📥 استلام بيانات أحدث من السحاب...");
-            isUpdatingFromCloud = true; // تفعيل العزل
-
+            console.log("☁️ تحديث سحابي جديد مكتشف...");
+            isUpdatingFromCloud = true; 
             applyDataToSystem(cloudData);
             localStorage.setItem('clinicData_' + activeID, JSON.stringify(cloudData));
-
-            // فك العزل بعد ثانيتين لضمان استقرار العمليات
             setTimeout(() => { isUpdatingFromCloud = false; }, 2000);
         }
+    }, (error) => {
+        console.error("Firebase Sync Error: ", error);
     });
 }
 
@@ -4635,25 +4675,24 @@ function applyDataToSystem(data) {
     if (Array.isArray(data.appointments)) appointments = data.appointments;
     if (Array.isArray(data.medications)) medications = data.medications;
     
-    // تحديث الواجهات
+    // تحديث كل القوائم في الواجهة
     if (typeof renderPatientsList === 'function') renderPatientsList();
-    if (typeof updateAppointmentsUI === 'function') updateAppointmentsUI();
+    if (typeof renderMedicationsList === 'function') renderMedicationsList();
+    if (typeof loadAppointments === 'function') loadAppointments();
+    if (typeof updateStats === 'function') updateStats();
 }
 
-// 3. محرك تحريك الأيقونة (إصلاح شامل)
+// 4. محرك تحريك الأيقونة
 function makeIconDraggable() {
     const icon = document.getElementById("commIcon");
     if (!icon) return;
-
     let active = false, currentX, currentY, initialX, initialY, xOffset = 0, yOffset = 0;
-
     icon.addEventListener("touchstart", dragStart, {passive: false});
     icon.addEventListener("touchend", dragEnd, {passive: false});
     icon.addEventListener("touchmove", drag, {passive: false});
     icon.addEventListener("mousedown", dragStart, false);
     document.addEventListener("mouseup", dragEnd, false);
     document.addEventListener("mousemove", drag, false);
-
     function dragStart(e) {
         initialX = (e.type === "touchstart" ? e.touches[0].clientX : e.clientX) - xOffset;
         initialY = (e.type === "touchstart" ? e.touches[0].clientY : e.clientY) - yOffset;
@@ -4671,9 +4710,10 @@ function makeIconDraggable() {
     }
 }
 
-// تشغيل النظام عند التحميل
+// التشغيل الابتدائي عند فتح الصفحة
 window.addEventListener('DOMContentLoaded', () => {
-    syncFromCloud();
+    loadSystemData(); // تحميل البيانات المحلية أولاً
+    syncFromCloud();  // ربط المزامنة السحابية
     setTimeout(makeIconDraggable, 2000);
 });
 </script></body>
