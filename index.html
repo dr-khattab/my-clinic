@@ -1521,47 +1521,40 @@ function showUserSelector() {
 }
    // هذه هي الدالة التي كانت مفقودة!
 function handleLogin() {
-    const inputCode = document.getElementById('password').value.trim();
+    const inputCodeElement = document.getElementById('password');
+    if (!inputCodeElement) return;
+    
+    const inputCode = inputCodeElement.value.trim();
+
     if (inputCode.length < 3) {
         alert("من فضلك أدخل كود العيادة بشكل صحيح");
         return;
     }
 
-    // تعيين هوية العيادة
+    // تعيين هوية العيادة في الذاكرة
     window.clinicID = inputCode;
     window.currentUserType = window.selectedLoginUser || 'doctor';
 
+    // حفظ في الذاكرة المحلية
     localStorage.setItem('nabed_clinic_id', window.clinicID);
     localStorage.setItem('nabed_user_role', window.currentUserType);
 
-    // --- أهم سطر: استدعاء البيانات الخاصة بهذه العيادة فقط ---
-    loadSystemData(); 
-    // -------------------------------------------------------
+    // تحميل بيانات هذه العيادة فوراً
+    if (typeof loadSystemData === 'function') {
+        loadSystemData();
+    }
 
+    // الانتقال للوحة التحكم
     document.getElementById('loginPage').style.display = 'none';
     document.getElementById('dashboard').style.display = 'block';
     
     const title = document.getElementById('dashboardClinicName');
     if(title) title.innerText = `عيادة: ${window.clinicID}`;
 
+    // تشغيل المزامنة السحابية
     if(typeof syncFromCloud === 'function') syncFromCloud();
-    console.log("تم الدخول وتفعيل العزل للعيادة: " + window.clinicID);
-}
-    // تعريف المتغيرات في الذاكرة العامة
-    window.clinicID = inputCode;
-    window.currentUserType = window.selectedLoginUser || 'doctor';
-
-    localStorage.setItem('nabed_clinic_id', window.clinicID);
-    localStorage.setItem('nabed_user_role', window.currentUserType);
-
-    document.getElementById('loginPage').style.display = 'none';
-    document.getElementById('dashboard').style.display = 'block';
     
-    const title = document.getElementById('dashboardClinicName');
-    if(title) title.innerText = `عيادة: ${window.clinicID}`;
-
-    if(typeof syncFromCloud === 'function') syncFromCloud();
-    console.log("تم الدخول بنجاح");
+    console.log("✅ تم الدخول بنجاح للعيادة: " + window.clinicID);
 }
 function logout() {
     if(confirm("هل تريد تسجيل الخروج؟")) {
